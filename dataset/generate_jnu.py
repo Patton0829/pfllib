@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 num_clients = 20
-raw_dir_path = "jnu/JNU-Bearing-Dataset/"
+raw_dir_path = "dataset/jnu/JNU-Bearing-Dataset/"
 dir_path = "jnu/"
 train_ratio = 0.8
 dirichlet_alpha = 0.05
@@ -184,6 +184,16 @@ def get_clients_per_condition(num_clients, num_conditions, profile):
         for i in range(num_clients % num_conditions):
             counts[i] += 1
         return counts
+
+    if profile == "moderate":
+        if num_conditions != 4 or num_clients != 20:
+            raise ValueError("The 'moderate' condition profile currently expects 4 conditions and 20 clients.")
+        return [7, 5, 4, 4]
+
+    if profile == "severe":
+        if num_conditions != 4 or num_clients != 20:
+            raise ValueError("The 'severe' condition profile currently expects 4 conditions and 20 clients.")
+        return [10, 5, 3, 2]
 
     raise ValueError(f"Unsupported condition profile: {profile}")
 
@@ -506,7 +516,8 @@ if __name__ == "__main__":
             "Usage: python generate_jnu.py <iid|noniid> [balance|-] [pat|dir|exdir|-] [seed] [condition_profile] [size_jitter_ratio]\n"
             "Examples:\n"
             "  python generate_jnu.py iid - - 42\n"
-            "  python generate_jnu.py noniid - - 42 balanced 0.12\n"
+            "  python generate_jnu.py noniid - - 42 moderate 0.20\n"
+            "  python generate_jnu.py noniid - - 42 severe 0.25\n"
             "  python generate_jnu.py noniid balance dir 42 balanced 0.10"
         )
 
