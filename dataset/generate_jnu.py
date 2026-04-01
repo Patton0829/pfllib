@@ -186,14 +186,22 @@ def get_clients_per_condition(num_clients, num_conditions, profile):
         return counts
 
     if profile == "moderate":
-        if num_conditions != 4 or num_clients != 20:
-            raise ValueError("The 'moderate' condition profile currently expects 4 conditions and 20 clients.")
-        return [7, 5, 4, 4]
+        if num_clients != 20:
+            raise ValueError("The 'moderate' condition profile currently expects 20 clients.")
+        if num_conditions == 3:
+            return [8, 7, 5]
+        if num_conditions == 4:
+            return [7, 5, 4, 4]
+        raise ValueError("The 'moderate' condition profile currently expects 3 or 4 conditions.")
 
     if profile == "severe":
-        if num_conditions != 4 or num_clients != 20:
-            raise ValueError("The 'severe' condition profile currently expects 4 conditions and 20 clients.")
-        return [10, 5, 3, 2]
+        if num_clients != 20:
+            raise ValueError("The 'severe' condition profile currently expects 20 clients.")
+        if num_conditions == 3:
+            return [11, 6, 3]
+        if num_conditions == 4:
+            return [10, 5, 3, 2]
+        raise ValueError("The 'severe' condition profile currently expects 3 or 4 conditions.")
 
     raise ValueError(f"Unsupported condition profile: {profile}")
 
