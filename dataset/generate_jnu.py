@@ -11,7 +11,7 @@ import numpy as np
 
 num_clients = 20
 raw_dir_path = "dataset/jnu/JNU-Bearing-Dataset/"
-dir_path = "jnu/"
+dir_path = "dataset/jnu/"
 train_ratio = 0.8
 dirichlet_alpha = 0.05
 size_jitter_ratio = 0.12
