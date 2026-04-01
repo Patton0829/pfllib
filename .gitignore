@@ -1,3 +1,26 @@
 /results
 /system/models
 *__pycache__*
+
+# Python / virtual env
+.venv/
+venv/
+env/
+*.pyc
+
+# Experiment artifacts
+*.h5
+*.pt
+*.png
+*.pdf
+
+# Generated dataset splits / raw data
+dataset/**/train/
+dataset/**/test/
+dataset/**/rawdata/
+dataset/**/figures/
+
+# Local large datasets not suitable for git
+dataset/cwru/condition*/
+dataset/jnu/
+dataset/seub/

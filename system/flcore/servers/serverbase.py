@@ -50,6 +50,7 @@ class Server(object):
 
         self.times = times
         self.eval_gap = args.eval_gap
+        self.print_gap = args.print_gap
         self.client_drop_rate = args.client_drop_rate
         self.train_slow_rate = args.train_slow_rate
         self.send_slow_rate = args.send_slow_rate
@@ -225,7 +226,10 @@ class Server(object):
         return ids, num_samples, losses
 
     # evaluate selected clients
-    def evaluate(self, acc=None, loss=None):
+    def should_print_round(self, round_idx):
+        return self.print_gap > 0 and round_idx % self.print_gap == 0
+
+    def evaluate(self, acc=None, loss=None, verbose=True):
         stats = self.test_metrics()
         stats_train = self.train_metrics()
 
@@ -245,12 +249,13 @@ class Server(object):
         else:
             loss.append(train_loss)
 
-        print("Averaged Train Loss: {:.4f}".format(train_loss))
-        print("Averaged Test Accuracy: {:.4f}".format(test_acc))
-        print("Averaged Test AUC: {:.4f}".format(test_auc))
-        # self.print_(test_acc, train_acc, train_loss)
-        print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
-        print("Std Test AUC: {:.4f}".format(np.std(aucs)))
+        if verbose:
+            print("Averaged Train Loss: {:.4f}".format(train_loss))
+            print("Averaged Test Accuracy: {:.4f}".format(test_acc))
+            print("Averaged Test AUC: {:.4f}".format(test_auc))
+            # self.print_(test_acc, train_acc, train_loss)
+            print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
+            print("Std Test AUC: {:.4f}".format(np.std(aucs)))
 
     def print_(self, test_acc, test_auc, train_loss):
         print("Average Test Accuracy: {:.4f}".format(test_acc))

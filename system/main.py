@@ -10,6 +10,10 @@ import torchvision
 import logging
 
 from flcore.servers.serveravg import FedAvg
+from flcore.servers.serveravgacc import FedAvgAcc
+from flcore.servers.serveravgsim import FedAvgSim
+from flcore.servers.serveravgsimacc import FedAvgSimAcc
+from flcore.servers.serveravgsimnorm import FedAvgSimNorm
 from flcore.servers.serverpFedMe import pFedMe
 from flcore.servers.serverperavg import PerAvg
 from flcore.servers.serverprox import FedProx
@@ -85,6 +89,8 @@ def run(args):
                 args.model = Mclr_Logistic(1*28*28, num_classes=args.num_classes).to(args.device)
             elif "Cifar10" in args.dataset:
                 args.model = Mclr_Logistic(3*32*32, num_classes=args.num_classes).to(args.device)
+            elif args.dataset.lower() in {"cwru", "jnu"}:
+                args.model = Mclr_Logistic(2048, num_classes=args.num_classes).to(args.device)
             else:
                 args.model = Mclr_Logistic(60, num_classes=args.num_classes).to(args.device)
 
@@ -106,6 +112,8 @@ def run(args):
                 args.model = DNN(1*28*28, 100, num_classes=args.num_classes).to(args.device)
             elif "Cifar10" in args.dataset:
                 args.model = DNN(3*32*32, 100, num_classes=args.num_classes).to(args.device)
+            elif args.dataset.lower() in {"cwru", "jnu"}:
+                args.model = DNN(2048, 256, num_classes=args.num_classes).to(args.device)
             else:
                 args.model = DNN(60, 20, num_classes=args.num_classes).to(args.device)
         
@@ -188,6 +196,30 @@ def run(args):
             args.model.fc = nn.Identity()
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedAvg(args, i)
+
+        elif args.algorithm == "FedAvgSim":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSim(args, i)
+
+        elif args.algorithm == "FedAvgSimNorm":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSimNorm(args, i)
+
+        elif args.algorithm == "FedAvgAcc":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgAcc(args, i)
+
+        elif args.algorithm == "FedAvgSimAcc":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSimAcc(args, i)
 
         elif args.algorithm == "Local":
             server = Local(args, i)
@@ -372,7 +404,7 @@ def run(args):
 
         time_list.append(time.time()-start)
 
-    print(f"\nAverage time cost: {round(np.average(time_list), 2)}s.")
+    print(f"\nAverage time cost: {round(np.average(time_list) / 3600, 2)}h.")
     
 
     # Global average
@@ -393,21 +425,21 @@ if __name__ == "__main__":
     parser.add_argument('-dev', "--device", type=str, default="cuda",
                         choices=["cpu", "cuda"])
     parser.add_argument('-did', "--device_id", type=str, default="0")
-    parser.add_argument('-data', "--dataset", type=str, default="MNIST")
+    parser.add_argument('-data', "--dataset", type=str, default="cwru")
     parser.add_argument('-ncl', "--num_classes", type=int, default=10)
     parser.add_argument('-m', "--model", type=str, default="CNN")
-    parser.add_argument('-lbs', "--batch_size", type=int, default=10)
-    parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.005,
+    parser.add_argument('-lbs', "--batch_size", type=int, default=128)
+    parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.01,
                         help="Local learning rate")
     parser.add_argument('-ld', "--learning_rate_decay", type=bool, default=False)
     parser.add_argument('-ldg', "--learning_rate_decay_gamma", type=float, default=0.99)
-    parser.add_argument('-gr', "--global_rounds", type=int, default=2000)
+    parser.add_argument('-gr', "--global_rounds", type=int, default=3000)
     parser.add_argument('-tc', "--top_cnt", type=int, default=100, 
                         help="For auto_break")
-    parser.add_argument('-ls', "--local_epochs", type=int, default=1, 
+    parser.add_argument('-ls', "--local_epochs", type=int, default=8, 
                         help="Multiple update steps in one local epoch.")
     parser.add_argument('-algo', "--algorithm", type=str, default="FedAvg")
-    parser.add_argument('-jr', "--join_ratio", type=float, default=1.0,
+    parser.add_argument('-jr', "--join_ratio", type=float, default=0.2,
                         help="Ratio of clients per round")
     parser.add_argument('-rjr', "--random_join_ratio", type=bool, default=False,
                         help="Random ratio of clients per round")
@@ -417,8 +449,10 @@ if __name__ == "__main__":
                         help="Previous Running times")
     parser.add_argument('-t', "--times", type=int, default=1,
                         help="Running times")
-    parser.add_argument('-eg', "--eval_gap", type=int, default=1,
+    parser.add_argument('-eg', "--eval_gap", type=int, default=10,
                         help="Rounds gap for evaluation")
+    parser.add_argument('-pg', "--print_gap", type=int, default=10,
+                        help="Rounds gap for printing evaluation logs")
     parser.add_argument('-sfn', "--save_folder_name", type=str, default='items')
     parser.add_argument('-ab', "--auto_break", type=bool, default=False)
     parser.add_argument('-dlg', "--dlg_eval", type=bool, default=False)
@@ -467,6 +501,10 @@ if __name__ == "__main__":
     parser.add_argument('-pls', "--plocal_epochs", type=int, default=1)
     # MOON / FedCAC / FedLC
     parser.add_argument('-tau', "--tau", type=float, default=1.0)
+    parser.add_argument('-stau', "--sim_tau", type=float, default=2.0,
+                        help="Temperature for similarity-aware aggregation in FedAvgSim")
+    parser.add_argument('-atau', "--acc_tau", type=float, default=2.0,
+                        help="Temperature for accuracy-aware aggregation in FedAvgAcc")
     # FedBABU
     parser.add_argument('-fte', "--fine_tuning_epochs", type=int, default=10)
     # APPLE

@@ -1,0 +1,17 @@
+# Core runtime dependencies
+numpy<2
+torch
+torchvision
+torchtext
+scipy
+scikit-learn
+pandas
+ujson
+h5py
+Pillow
+matplotlib
+calmsize
+
+# Optional-but-used dependencies for specific algorithms/datasets in this repo
+cvxpy
+wilds
