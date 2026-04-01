@@ -4,6 +4,7 @@ set -euo pipefail
 
 # Run from repo root:
 #   bash ./run_tau_experiments.sh
+#   bash ./run_tau_experiments.sh jnu
 #
 # Update the shared args below to match your experiment settings.
 
@@ -11,8 +12,25 @@ PYTHON_BIN="python"
 MAIN_SCRIPT="main.py"
 SYSTEM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/system" && pwd)"
 
+DATASET="${1:-cwru}"
+
+case "$DATASET" in
+  cwru)
+    NUM_CLASSES=10
+    ;;
+  jnu)
+    NUM_CLASSES=4
+    ;;
+  *)
+    echo "Unsupported dataset: $DATASET"
+    echo "Usage: bash ./run_tau_experiments.sh [cwru|jnu]"
+    exit 1
+    ;;
+esac
+
 COMMON_ARGS=(
-  -data cwru
+  -data "$DATASET"
+  -ncl "$NUM_CLASSES"
   -m DNN
   -dev cuda
   -did 0
@@ -49,6 +67,8 @@ format_tau_tag() {
 }
 
 cd "$SYSTEM_DIR"
+
+echo "Dataset: ${DATASET} (num_classes=${NUM_CLASSES})"
 
 echo "Running ${BASELINE_ALGORITHM} baseline ..."
 "$PYTHON_BIN" "$MAIN_SCRIPT" "${COMMON_ARGS[@]}" \
