@@ -13,6 +13,8 @@ from flcore.servers.serveravg import FedAvg
 from flcore.servers.serveravgacc import FedAvgAcc
 from flcore.servers.serveravgsim import FedAvgSim
 from flcore.servers.serveravgsimacc import FedAvgSimAcc
+from flcore.servers.serveravgsimaccnosize import FedAvgSimAccNoSize
+from flcore.servers.serveravgsimaccsizealpha import FedAvgSimAccSizeAlpha
 from flcore.servers.serveravgsimnorm import FedAvgSimNorm
 from flcore.servers.serverpFedMe import pFedMe
 from flcore.servers.serverperavg import PerAvg
@@ -220,6 +222,18 @@ def run(args):
             args.model.fc = nn.Identity()
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedAvgSimAcc(args, i)
+
+        elif args.algorithm == "FedAvgSimAccNoSize":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSimAccNoSize(args, i)
+
+        elif args.algorithm == "FedAvgSimAccSizeAlpha":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSimAccSizeAlpha(args, i)
 
         elif args.algorithm == "Local":
             server = Local(args, i)
@@ -505,6 +519,8 @@ if __name__ == "__main__":
                         help="Temperature for similarity-aware aggregation in FedAvgSim")
     parser.add_argument('-atau', "--acc_tau", type=float, default=2.0,
                         help="Temperature for accuracy-aware aggregation in FedAvgAcc")
+    parser.add_argument('-sa', "--size_alpha", type=float, default=0.5,
+                        help="Exponent for sample-size weighting in FedAvgSimAccSizeAlpha")
     # FedBABU
     parser.add_argument('-fte', "--fine_tuning_epochs", type=int, default=10)
     # APPLE
