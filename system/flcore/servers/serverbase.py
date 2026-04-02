@@ -199,34 +199,15 @@ class Server(object):
                 hf.create_dataset('final_per_class_acc', data=self.latest_per_class_acc)
 
             artifact_prefix = result_path + algo
-            np.savetxt(
-                artifact_prefix + "_final_confusion_matrix.csv",
-                self.latest_confusion_matrix,
-                delimiter=",",
-                fmt="%d",
-            )
-            classification_metrics = np.column_stack(
-                (
-                    np.arange(self.num_classes, dtype=np.int64),
-                    self.latest_per_class_acc,
-                )
-            )
-            np.savetxt(
-                artifact_prefix + "_final_per_class_accuracy.csv",
-                classification_metrics,
-                delimiter=",",
-                fmt=["%d", "%.6f"],
-                header="class_id,per_class_accuracy",
-                comments="",
-            )
-            np.savetxt(
-                artifact_prefix + "_final_macro_f1.csv",
-                np.asarray([[self.latest_macro_f1]], dtype=np.float64),
-                delimiter=",",
-                fmt="%.6f",
-                header="macro_f1",
-                comments="",
-            )
+            summary_csv_path = artifact_prefix + "_final_metrics.csv"
+            with open(summary_csv_path, "w", encoding="utf-8") as f:
+                f.write("metric,value\n")
+                f.write(f"macro_f1,{self.latest_macro_f1:.6f}\n")
+                for class_id, class_acc in enumerate(self.latest_per_class_acc):
+                    f.write(f"per_class_accuracy_{class_id},{class_acc:.6f}\n")
+                for row in range(self.num_classes):
+                    for col in range(self.num_classes):
+                        f.write(f"confusion_matrix_{row}_{col},{int(self.latest_confusion_matrix[row, col])}\n")
             self._save_confusion_matrix_plot(artifact_prefix + "_final_confusion_matrix.png")
 
     def save_item(self, item, item_name):
@@ -238,22 +219,31 @@ class Server(object):
         return torch.load(os.path.join(self.save_folder_name, "server_" + item_name + ".pt"))
 
     def _save_confusion_matrix_plot(self, file_path):
+        row_totals = self.latest_confusion_matrix.sum(axis=1, keepdims=True)
+        normalized_cm = np.divide(
+            self.latest_confusion_matrix.astype(np.float64),
+            row_totals,
+            out=np.zeros_like(self.latest_confusion_matrix, dtype=np.float64),
+            where=row_totals > 0,
+        )
+
         fig, ax = plt.subplots(figsize=(6.5, 5.5), constrained_layout=True)
-        im = ax.imshow(self.latest_confusion_matrix, cmap="Blues")
-        ax.set_title("Final Confusion Matrix")
+        im = ax.imshow(normalized_cm, cmap="Blues", vmin=0.0, vmax=1.0)
+        ax.set_title("Final Confusion Matrix (%)")
         ax.set_xlabel("Predicted Label")
         ax.set_ylabel("True Label")
         ax.set_xticks(np.arange(self.num_classes))
         ax.set_yticks(np.arange(self.num_classes))
 
-        max_value = max(int(self.latest_confusion_matrix.max()), 1)
         for row in range(self.num_classes):
             for col in range(self.num_classes):
-                value = int(self.latest_confusion_matrix[row, col])
-                text_color = "white" if value > max_value * 0.5 else "black"
-                ax.text(col, row, str(value), ha="center", va="center", color=text_color, fontsize=9)
+                value = normalized_cm[row, col]
+                text = f"{value * 100:.1f}%"
+                text_color = "white" if value > 0.5 else "black"
+                ax.text(col, row, text, ha="center", va="center", color=text_color, fontsize=9)
 
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label("Percentage")
         fig.savefig(file_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 

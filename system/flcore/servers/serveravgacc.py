@@ -13,13 +13,20 @@ class FedAvgAcc(Server):
         super().__init__(args, times)
 
         self.acc_tau = args.acc_tau
+        self.acc_ema_rho = args.acc_ema_rho
+        self.acc_gamma_max = args.acc_gamma_max
         self.client_acc_map = {}
+        self.client_relative_acc_ema_map = {}
+        self.current_round = 0
 
         self.set_slow_clients()
         self.set_clients(clientAVG)
 
         print(f"\nJoin ratio / total clients: {self.join_ratio} / {self.num_clients}")
         print(f"Accuracy temperature (acc_tau): {self.acc_tau}")
+        print(f"Relative-accuracy EMA rho: {self.acc_ema_rho}")
+        print(f"Relative-accuracy gamma max: {self.acc_gamma_max}")
+        print("Accuracy term: relative accuracy + EMA smoothing + progressive warm-up")
         print("Finished creating server and clients.")
 
         self.Budget = []
@@ -28,21 +35,36 @@ class FedAvgAcc(Server):
         summary = self._collect_evaluation_summary()
         stats = summary["stats"]
 
-        self.client_acc_map = {
+        self.client_acc_map = raw_acc_map = {
             client_id: (correct / num_samples)
             for client_id, correct, num_samples in zip(stats[0], stats[2], stats[1])
         }
+        if raw_acc_map:
+            mean_acc = float(np.mean(list(raw_acc_map.values())))
+            for client_id, raw_acc in raw_acc_map.items():
+                relative_acc = raw_acc - mean_acc
+                previous = self.client_relative_acc_ema_map.get(client_id, relative_acc)
+                smoothed = self.acc_ema_rho * previous + (1.0 - self.acc_ema_rho) * relative_acc
+                self.client_relative_acc_ema_map[client_id] = smoothed
 
         self._record_evaluation_summary(summary, record=record)
 
         if verbose:
             self._print_evaluation_summary(summary)
 
+    def _accuracy_gamma(self):
+        if self.global_rounds <= 0:
+            return self.acc_gamma_max
+        progress = min(max(self.current_round / float(self.global_rounds), 0.0), 1.0)
+        return self.acc_gamma_max * progress
+
     def _compute_accuracy_weights(self):
+        gamma_t = self._accuracy_gamma()
         raw_weights = []
         for client_id, base_weight in zip(self.uploaded_ids, self.uploaded_weights):
-            client_acc = self.client_acc_map.get(client_id, 0.0)
-            raw_weights.append(base_weight * float(torch.exp(torch.tensor(self.acc_tau * client_acc)).item()))
+            client_acc = self.client_relative_acc_ema_map.get(client_id, 0.0)
+            exponent = gamma_t * self.acc_tau * client_acc
+            raw_weights.append(base_weight * float(torch.exp(torch.tensor(exponent)).item()))
 
         weight_sum = sum(raw_weights)
         if weight_sum <= 0:
@@ -64,6 +86,7 @@ class FedAvgAcc(Server):
 
     def train(self):
         for i in range(self.global_rounds + 1):
+            self.current_round = i
             s_t = time.time()
             self.selected_clients = self.select_clients()
             self.send_models()

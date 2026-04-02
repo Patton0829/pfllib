@@ -16,6 +16,7 @@ from flcore.servers.serveravgsimacc import FedAvgSimAcc
 from flcore.servers.serveravgsimaccnosize import FedAvgSimAccNoSize
 from flcore.servers.serveravgsimaccsizealpha import FedAvgSimAccSizeAlpha
 from flcore.servers.serveravgsimnorm import FedAvgSimNorm
+from flcore.servers.serveravgsimnormnosize import FedAvgSimNormNoSize
 from flcore.servers.serverpFedMe import pFedMe
 from flcore.servers.serverperavg import PerAvg
 from flcore.servers.serverprox import FedProx
@@ -216,6 +217,12 @@ def run(args):
             args.model.fc = nn.Identity()
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedAvgSimNorm(args, i)
+
+        elif args.algorithm == "FedAvgSimNormNoSize":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSimNormNoSize(args, i)
 
         elif args.algorithm == "FedAvgAcc":
             args.head = copy.deepcopy(args.model.fc)
@@ -525,6 +532,10 @@ if __name__ == "__main__":
                         help="Temperature for similarity-aware aggregation in FedAvgSim")
     parser.add_argument('-atau', "--acc_tau", type=float, default=2.0,
                         help="Temperature for accuracy-aware aggregation in FedAvgAcc")
+    parser.add_argument('-aer', "--acc_ema_rho", type=float, default=0.9,
+                        help="EMA factor for relative client accuracy in FedAvgAcc")
+    parser.add_argument('-agm', "--acc_gamma_max", type=float, default=1.0,
+                        help="Maximum warm-up factor for the accuracy term in FedAvgAcc")
     parser.add_argument('-sa', "--size_alpha", type=float, default=0.5,
                         help="Exponent for sample-size weighting in FedAvgSimAccSizeAlpha")
     # FedBABU
