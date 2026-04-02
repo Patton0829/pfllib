@@ -17,7 +17,7 @@ dirichlet_alpha = 0.05
 size_jitter_ratio = 0.12
 condition_profile = "balanced"
 window_size = 2048
-window_stride = 2048
+window_stride = 512
 
 label_map = {
     "n": 0,

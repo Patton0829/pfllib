@@ -259,25 +259,34 @@ class SignalCNN1D(nn.Module):
     def __init__(self, in_channels=1, seq_len=2048, num_classes=10):
         super().__init__()
         self.features = nn.Sequential(
-            nn.Conv1d(in_channels, 32, kernel_size=9, padding=4),
-            nn.BatchNorm1d(32),
+            nn.Conv1d(in_channels, 64, kernel_size=15, padding=7),
+            nn.BatchNorm1d(64),
             nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2),
-            nn.Conv1d(32, 64, kernel_size=9, padding=4),
+            nn.Conv1d(64, 64, kernel_size=15, padding=7),
             nn.BatchNorm1d(64),
             nn.ReLU(inplace=True),
             nn.MaxPool1d(kernel_size=2),
-            nn.Conv1d(64, 128, kernel_size=9, padding=4),
+            nn.Conv1d(64, 128, kernel_size=11, padding=5),
             nn.BatchNorm1d(128),
             nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool1d(16),
+            nn.Conv1d(128, 128, kernel_size=11, padding=5),
+            nn.BatchNorm1d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2),
+            nn.Conv1d(128, 256, kernel_size=7, padding=3),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(256, 256, kernel_size=7, padding=3),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool1d(8),
         )
         self.fc1 = nn.Sequential(
-            nn.Linear(128 * 16, 256),
+            nn.Linear(256 * 8, 512),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=0.2),
+            nn.Dropout(p=0.3),
         )
-        self.fc = nn.Linear(256, num_classes)
+        self.fc = nn.Linear(512, num_classes)
 
     def forward(self, x):
         if x.ndim == 3:

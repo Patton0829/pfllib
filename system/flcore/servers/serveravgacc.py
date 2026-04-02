@@ -25,30 +25,18 @@ class FedAvgAcc(Server):
         self.Budget = []
 
     def _evaluate_and_cache_client_acc(self, verbose=True, record=True):
-        stats = self.test_metrics()
-        stats_train = self.train_metrics()
-
-        test_acc = sum(stats[2]) * 1.0 / sum(stats[1])
-        test_auc = sum(stats[3]) * 1.0 / sum(stats[1])
-        train_loss = sum(stats_train[2]) * 1.0 / sum(stats_train[1])
-        accs = [a / n for a, n in zip(stats[2], stats[1])]
-        aucs = [a / n for a, n in zip(stats[3], stats[1])]
+        summary = self._collect_evaluation_summary()
+        stats = summary["stats"]
 
         self.client_acc_map = {
             client_id: (correct / num_samples)
             for client_id, correct, num_samples in zip(stats[0], stats[2], stats[1])
         }
 
-        if record:
-            self.rs_test_acc.append(test_acc)
-            self.rs_train_loss.append(train_loss)
+        self._record_evaluation_summary(summary, record=record)
 
         if verbose:
-            print("Averaged Train Loss: {:.4f}".format(train_loss))
-            print("Averaged Test Accuracy: {:.4f}".format(test_acc))
-            print("Averaged Test AUC: {:.4f}".format(test_auc))
-            print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
-            print("Std Test AUC: {:.4f}".format(np.std(aucs)))
+            self._print_evaluation_summary(summary)
 
     def _compute_accuracy_weights(self):
         raw_weights = []

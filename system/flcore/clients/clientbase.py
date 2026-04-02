@@ -77,7 +77,7 @@ class Client(object):
         for param, new_param in zip(model.parameters(), new_params):
             param.data = new_param.data.clone()
 
-    def test_metrics(self):
+    def test_metrics(self, return_detail=False):
         testloaderfull = self.load_test_data()
         # self.model = self.load_model('model')
         # self.model.to(self.device)
@@ -87,6 +87,7 @@ class Client(object):
         test_num = 0
         y_prob = []
         y_true = []
+        y_pred = []
         
         with torch.no_grad():
             for x, y in testloaderfull:
@@ -96,11 +97,13 @@ class Client(object):
                     x = x.to(self.device)
                 y = y.to(self.device)
                 output = self.model(x)
+                pred = torch.argmax(output, dim=1)
 
-                test_acc += (torch.sum(torch.argmax(output, dim=1) == y)).item()
+                test_acc += (torch.sum(pred == y)).item()
                 test_num += y.shape[0]
 
                 y_prob.append(output.detach().cpu().numpy())
+                y_pred.append(pred.detach().cpu().numpy())
                 nc = self.num_classes
                 if self.num_classes == 2:
                     nc += 1
@@ -114,9 +117,14 @@ class Client(object):
 
         y_prob = np.concatenate(y_prob, axis=0)
         y_true = np.concatenate(y_true, axis=0)
+        y_pred = np.concatenate(y_pred, axis=0)
 
         auc = metrics.roc_auc_score(y_true, y_prob, average='micro')
-        
+
+        if return_detail:
+            y_true_cls = np.argmax(y_true, axis=1)
+            return test_acc, test_num, auc, y_true_cls, y_pred
+
         return test_acc, test_num, auc
 
     def train_metrics(self):

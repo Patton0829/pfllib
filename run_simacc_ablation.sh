@@ -35,13 +35,14 @@ COMMON_ARGS=(
   -data "$DATASET"
   -ncl "$NUM_CLASSES"
   -m CNN1D
+  -lbs 64
   -dev cuda
   -did 0
-  -lr 0.005
+  -lr 0.001
   -gr 3000
-  -ls 3
+  -ls 2
   -nc 20
-  -jr 0.2
+  -jr 0.5
   -eg 1
   -pg 10
   -t 1

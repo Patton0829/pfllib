@@ -5,6 +5,10 @@ import h5py
 import copy
 import time
 import random
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from sklearn import metrics
 from utils.data_utils import read_client_data
 from utils.dlg import DLG
 
@@ -47,6 +51,11 @@ class Server(object):
         self.rs_test_acc = []
         self.rs_test_auc = []
         self.rs_train_loss = []
+        self.rs_macro_f1 = []
+        self.rs_per_class_acc = []
+        self.latest_confusion_matrix = np.zeros((self.num_classes, self.num_classes), dtype=np.int64)
+        self.latest_macro_f1 = 0.0
+        self.latest_per_class_acc = np.zeros(self.num_classes, dtype=np.float64)
 
         self.times = times
         self.eval_gap = args.eval_gap
@@ -183,6 +192,42 @@ class Server(object):
                 hf.create_dataset('rs_test_acc', data=self.rs_test_acc)
                 hf.create_dataset('rs_test_auc', data=self.rs_test_auc)
                 hf.create_dataset('rs_train_loss', data=self.rs_train_loss)
+                hf.create_dataset('rs_macro_f1', data=np.asarray(self.rs_macro_f1, dtype=np.float64))
+                hf.create_dataset('rs_per_class_acc', data=np.asarray(self.rs_per_class_acc, dtype=np.float64))
+                hf.create_dataset('final_confusion_matrix', data=self.latest_confusion_matrix)
+                hf.create_dataset('final_macro_f1', data=np.asarray([self.latest_macro_f1], dtype=np.float64))
+                hf.create_dataset('final_per_class_acc', data=self.latest_per_class_acc)
+
+            artifact_prefix = result_path + algo
+            np.savetxt(
+                artifact_prefix + "_final_confusion_matrix.csv",
+                self.latest_confusion_matrix,
+                delimiter=",",
+                fmt="%d",
+            )
+            classification_metrics = np.column_stack(
+                (
+                    np.arange(self.num_classes, dtype=np.int64),
+                    self.latest_per_class_acc,
+                )
+            )
+            np.savetxt(
+                artifact_prefix + "_final_per_class_accuracy.csv",
+                classification_metrics,
+                delimiter=",",
+                fmt=["%d", "%.6f"],
+                header="class_id,per_class_accuracy",
+                comments="",
+            )
+            np.savetxt(
+                artifact_prefix + "_final_macro_f1.csv",
+                np.asarray([[self.latest_macro_f1]], dtype=np.float64),
+                delimiter=",",
+                fmt="%.6f",
+                header="macro_f1",
+                comments="",
+            )
+            self._save_confusion_matrix_plot(artifact_prefix + "_final_confusion_matrix.png")
 
     def save_item(self, item, item_name):
         if not os.path.exists(self.save_folder_name):
@@ -192,6 +237,26 @@ class Server(object):
     def load_item(self, item_name):
         return torch.load(os.path.join(self.save_folder_name, "server_" + item_name + ".pt"))
 
+    def _save_confusion_matrix_plot(self, file_path):
+        fig, ax = plt.subplots(figsize=(6.5, 5.5), constrained_layout=True)
+        im = ax.imshow(self.latest_confusion_matrix, cmap="Blues")
+        ax.set_title("Final Confusion Matrix")
+        ax.set_xlabel("Predicted Label")
+        ax.set_ylabel("True Label")
+        ax.set_xticks(np.arange(self.num_classes))
+        ax.set_yticks(np.arange(self.num_classes))
+
+        max_value = max(int(self.latest_confusion_matrix.max()), 1)
+        for row in range(self.num_classes):
+            for col in range(self.num_classes):
+                value = int(self.latest_confusion_matrix[row, col])
+                text_color = "white" if value > max_value * 0.5 else "black"
+                ax.text(col, row, str(value), ha="center", va="center", color=text_color, fontsize=9)
+
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        fig.savefig(file_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
     def test_metrics(self):
         if self.eval_new_clients and self.num_new_clients > 0:
             self.fine_tuning_new_clients()
@@ -200,15 +265,25 @@ class Server(object):
         num_samples = []
         tot_correct = []
         tot_auc = []
+        all_true = []
+        all_pred = []
         for c in self.clients:
-            ct, ns, auc = c.test_metrics()
+            try:
+                result = c.test_metrics(return_detail=True)
+            except TypeError:
+                result = c.test_metrics()
+
+            ct, ns, auc = result[:3]
             tot_correct.append(ct*1.0)
             tot_auc.append(auc*ns)
             num_samples.append(ns)
+            if len(result) >= 5:
+                all_true.append(np.asarray(result[3], dtype=np.int64))
+                all_pred.append(np.asarray(result[4], dtype=np.int64))
 
         ids = [c.id for c in self.clients]
 
-        return ids, num_samples, tot_correct, tot_auc
+        return ids, num_samples, tot_correct, tot_auc, all_true, all_pred
 
     def train_metrics(self):
         if self.eval_new_clients and self.num_new_clients > 0:
@@ -229,33 +304,78 @@ class Server(object):
     def should_print_round(self, round_idx):
         return self.print_gap > 0 and round_idx % self.print_gap == 0
 
-    def evaluate(self, acc=None, loss=None, verbose=True):
+    def _collect_evaluation_summary(self):
         stats = self.test_metrics()
         stats_train = self.train_metrics()
 
-        test_acc = sum(stats[2])*1.0 / sum(stats[1])
-        test_auc = sum(stats[3])*1.0 / sum(stats[1])
-        train_loss = sum(stats_train[2])*1.0 / sum(stats_train[1])
+        test_acc = sum(stats[2]) * 1.0 / sum(stats[1])
+        test_auc = sum(stats[3]) * 1.0 / sum(stats[1])
+        train_loss = sum(stats_train[2]) * 1.0 / sum(stats_train[1])
         accs = [a / n for a, n in zip(stats[2], stats[1])]
         aucs = [a / n for a, n in zip(stats[3], stats[1])]
-        
-        if acc == None:
-            self.rs_test_acc.append(test_acc)
+
+        all_true = np.concatenate(stats[4], axis=0) if len(stats) > 4 and len(stats[4]) > 0 else np.array([], dtype=np.int64)
+        all_pred = np.concatenate(stats[5], axis=0) if len(stats) > 5 and len(stats[5]) > 0 else np.array([], dtype=np.int64)
+        if all_true.size > 0 and all_pred.size > 0:
+            labels = np.arange(self.num_classes)
+            confusion_matrix = metrics.confusion_matrix(all_true, all_pred, labels=labels)
+            class_totals = confusion_matrix.sum(axis=1)
+            per_class_acc = np.divide(
+                np.diag(confusion_matrix),
+                class_totals,
+                out=np.zeros(self.num_classes, dtype=np.float64),
+                where=class_totals > 0,
+            )
+            macro_f1 = metrics.f1_score(all_true, all_pred, labels=labels, average='macro', zero_division=0)
         else:
-            acc.append(test_acc)
-        
-        if loss == None:
-            self.rs_train_loss.append(train_loss)
-        else:
-            loss.append(train_loss)
+            confusion_matrix = np.zeros((self.num_classes, self.num_classes), dtype=np.int64)
+            per_class_acc = np.zeros(self.num_classes, dtype=np.float64)
+            macro_f1 = 0.0
+
+        return {
+            "stats": stats,
+            "test_acc": test_acc,
+            "test_auc": test_auc,
+            "train_loss": train_loss,
+            "accs": accs,
+            "aucs": aucs,
+            "macro_f1": float(macro_f1),
+            "per_class_acc": per_class_acc.astype(np.float64),
+            "confusion_matrix": confusion_matrix.astype(np.int64),
+        }
+
+    def _record_evaluation_summary(self, summary, record=True):
+        self.latest_confusion_matrix = summary["confusion_matrix"]
+        self.latest_macro_f1 = summary["macro_f1"]
+        self.latest_per_class_acc = summary["per_class_acc"]
+
+        if record:
+            self.rs_test_acc.append(summary["test_acc"])
+            self.rs_test_auc.append(summary["test_auc"])
+            self.rs_train_loss.append(summary["train_loss"])
+            self.rs_macro_f1.append(summary["macro_f1"])
+            self.rs_per_class_acc.append(summary["per_class_acc"])
+
+    def _print_evaluation_summary(self, summary):
+        print("Averaged Train Loss: {:.4f}".format(summary["train_loss"]))
+        print("Averaged Test Accuracy: {:.4f}".format(summary["test_acc"]))
+        print("Averaged Test AUC: {:.4f}".format(summary["test_auc"]))
+        print("Macro-F1: {:.4f}".format(summary["macro_f1"]))
+        print("Per-class Accuracy: {}".format(np.array2string(summary["per_class_acc"], precision=4, separator=", ")))
+        print("Std Test Accuracy: {:.4f}".format(np.std(summary["accs"])))
+        print("Std Test AUC: {:.4f}".format(np.std(summary["aucs"])))
+
+    def evaluate(self, acc=None, loss=None, verbose=True):
+        summary = self._collect_evaluation_summary()
+        self._record_evaluation_summary(summary, record=(acc is None and loss is None))
+
+        if acc is not None:
+            acc.append(summary["test_acc"])
+        if loss is not None:
+            loss.append(summary["train_loss"])
 
         if verbose:
-            print("Averaged Train Loss: {:.4f}".format(train_loss))
-            print("Averaged Test Accuracy: {:.4f}".format(test_acc))
-            print("Averaged Test AUC: {:.4f}".format(test_auc))
-            # self.print_(test_acc, train_acc, train_loss)
-            print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
-            print("Std Test AUC: {:.4f}".format(np.std(aucs)))
+            self._print_evaluation_summary(summary)
 
     def print_(self, test_acc, test_auc, train_loss):
         print("Average Test Accuracy: {:.4f}".format(test_acc))
