@@ -45,7 +45,7 @@ COMMON_ARGS=(
   -t 1
 )
 
-# Compact search space: 4 tau pairs x 3 aggregation variants = 12 runs
+# Compact search space: 1 baseline + 4 tau pairs x 3 aggregation variants = 13 runs
 SIM_TAU_LIST=(2.0 4.0)
 ACC_TAU_LIST=(2.0 4.0)
 SIZE_ALPHA_LIST=(0.5)
@@ -61,6 +61,11 @@ cd "$SYSTEM_DIR"
 
 echo "Dataset: ${DATASET} (num_classes=${NUM_CLASSES})"
 echo "Running compact SimAcc ablations ..."
+
+echo "Running FedAvg baseline ..."
+"$PYTHON_BIN" "$MAIN_SCRIPT" "${COMMON_ARGS[@]}" \
+  -algo FedAvg \
+  -go compact_baseline_fedavg
 
 for stau in "${SIM_TAU_LIST[@]}"; do
   stau_tag="$(format_tag "$stau")"
