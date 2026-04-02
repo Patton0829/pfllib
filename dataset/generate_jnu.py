@@ -64,6 +64,15 @@ def segment_signal(signal, segment_length, stride):
     return np.asarray(segments, dtype=np.float32)
 
 
+def standardize_segments(segments):
+    flat = segments.reshape(segments.shape[0], -1)
+    mean = flat.mean(axis=1, keepdims=True)
+    std = flat.std(axis=1, keepdims=True)
+    std = np.maximum(std, 1e-6)
+    normalized = ((flat - mean) / std).reshape(segments.shape)
+    return normalized.astype(np.float32)
+
+
 def load_all_conditions(raw_dir_path):
     file_infos = []
     for file_name in sorted(os.listdir(raw_dir_path)):
@@ -91,6 +100,7 @@ def load_all_conditions(raw_dir_path):
     for file_name, label_id, condition_speed in file_infos:
         signal = signals[file_name][:min_length]
         segments = segment_signal(signal, window_size, window_stride)
+        segments = standardize_segments(segments)
         dataset_x.append(segments)
         dataset_y.append(np.full(len(segments), label_id, dtype=np.int64))
         dataset_conditions.append(

@@ -34,11 +34,12 @@ esac
 COMMON_ARGS=(
   -data "$DATASET"
   -ncl "$NUM_CLASSES"
-  -m DNN
+  -m CNN1D
   -dev cuda
   -did 0
+  -lr 0.005
   -gr 3000
-  -ls 8
+  -ls 3
   -nc 20
   -jr 0.2
   -eg 1

@@ -255,6 +255,44 @@ class DNN(nn.Module):
 
 # ====================================================================================================================
 
+class SignalCNN1D(nn.Module):
+    def __init__(self, in_channels=1, seq_len=2048, num_classes=10):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv1d(in_channels, 32, kernel_size=9, padding=4),
+            nn.BatchNorm1d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2),
+            nn.Conv1d(32, 64, kernel_size=9, padding=4),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2),
+            nn.Conv1d(64, 128, kernel_size=9, padding=4),
+            nn.BatchNorm1d(128),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool1d(16),
+        )
+        self.fc1 = nn.Sequential(
+            nn.Linear(128 * 16, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.2),
+        )
+        self.fc = nn.Linear(256, num_classes)
+
+    def forward(self, x):
+        if x.ndim == 3:
+            x = x.permute(0, 2, 1)
+        elif x.ndim == 2:
+            x = x.unsqueeze(1)
+        out = self.features(x)
+        out = torch.flatten(out, 1)
+        out = self.fc1(out)
+        out = self.fc(out)
+        out = F.log_softmax(out, dim=1)
+        return out
+
+# ====================================================================================================================
+
 class CifarNet(nn.Module):
     def __init__(self, num_classes=10):
         super(CifarNet, self).__init__()

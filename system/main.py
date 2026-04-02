@@ -118,6 +118,12 @@ def run(args):
                 args.model = DNN(2048, 256, num_classes=args.num_classes).to(args.device)
             else:
                 args.model = DNN(60, 20, num_classes=args.num_classes).to(args.device)
+
+        elif model_str == "CNN1D": # non-convex
+            if args.dataset.lower() in {"cwru", "jnu"}:
+                args.model = SignalCNN1D(in_channels=1, seq_len=2048, num_classes=args.num_classes).to(args.device)
+            else:
+                raise NotImplementedError("CNN1D is currently configured for cwru/jnu signal datasets only.")
         
         elif model_str == "ResNet18":
             args.model = torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes).to(args.device)
