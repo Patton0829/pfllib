@@ -17,6 +17,8 @@ from flcore.servers.serveravgsimaccnosize import FedAvgSimAccNoSize
 from flcore.servers.serveravgsimaccsizealpha import FedAvgSimAccSizeAlpha
 from flcore.servers.serveravgsimnorm import FedAvgSimNorm
 from flcore.servers.serveravgsimnormnosize import FedAvgSimNormNoSize
+from flcore.servers.serveravgsimaccunified import FedAvgSimAccUnified
+from flcore.servers.serveravgsimaccunifiednosize import FedAvgSimAccUnifiedNoSize
 from flcore.servers.serverpFedMe import pFedMe
 from flcore.servers.serverperavg import PerAvg
 from flcore.servers.serverprox import FedProx
@@ -247,6 +249,18 @@ def run(args):
             args.model.fc = nn.Identity()
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedAvgSimAccSizeAlpha(args, i)
+
+        elif args.algorithm == "FedAvgSimAccUnified":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSimAccUnified(args, i)
+
+        elif args.algorithm == "FedAvgSimAccUnifiedNoSize":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSimAccUnifiedNoSize(args, i)
 
         elif args.algorithm == "Local":
             server = Local(args, i)
