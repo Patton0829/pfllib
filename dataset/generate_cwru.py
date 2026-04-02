@@ -20,6 +20,16 @@ def load_split(split_path):
     return data["x"], data["y"]
 
 
+def standardize_samples(x):
+    x = np.asarray(x, dtype=np.float32)
+    flat = x.reshape(x.shape[0], -1)
+    mean = flat.mean(axis=1, keepdims=True)
+    std = flat.std(axis=1, keepdims=True)
+    std = np.maximum(std, 1e-6)
+    normalized = ((flat - mean) / std).reshape(x.shape)
+    return normalized.astype(np.float32)
+
+
 def load_all_conditions(raw_dir_path):
     dataset_x = []
     dataset_y = []
@@ -34,6 +44,7 @@ def load_all_conditions(raw_dir_path):
         condition_path = os.path.join(raw_dir_path, condition_name)
         for split_name in ["cnn_train.npz", "cnn_valid.npz", "cnn_test.npz"]:
             x, y = load_split(os.path.join(condition_path, split_name))
+            x = standardize_samples(x)
             dataset_x.append(x)
             dataset_y.append(y)
             dataset_conditions.append(np.full(len(y), condition_id, dtype=np.int64))
