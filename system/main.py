@@ -22,6 +22,7 @@ from flcore.servers.serveravgsimaccunifiednosize import FedAvgSimAccUnifiedNoSiz
 from flcore.servers.serverpFedMe import pFedMe
 from flcore.servers.serverperavg import PerAvg
 from flcore.servers.serverprox import FedProx
+from flcore.servers.serverproxnormnosize import FedProxSimNormNoSize
 from flcore.servers.serverfomo import FedFomo
 from flcore.servers.serveramp import FedAMP
 from flcore.servers.servermtl import FedMTL
@@ -40,6 +41,7 @@ from flcore.servers.serverbabu import FedBABU
 from flcore.servers.serverapple import APPLE
 from flcore.servers.servergen import FedGen
 from flcore.servers.serverscaffold import SCAFFOLD
+from flcore.servers.serverscaffoldnormnosize import SCAFFOLDSimNormNoSize
 from flcore.servers.serverfd import FD
 from flcore.servers.serverala import FedALA
 from flcore.servers.serverpac import FedPAC
@@ -277,6 +279,9 @@ def run(args):
         elif args.algorithm == "FedProx":
             server = FedProx(args, i)
 
+        elif args.algorithm == "FedProxSimNormNoSize":
+            server = FedProxSimNormNoSize(args, i)
+
         elif args.algorithm == "FedFomo":
             server = FedFomo(args, i)
 
@@ -348,6 +353,9 @@ def run(args):
 
         elif args.algorithm == "SCAFFOLD":
             server = SCAFFOLD(args, i)
+
+        elif args.algorithm == "SCAFFOLDSimNormNoSize":
+            server = SCAFFOLDSimNormNoSize(args, i)
 
         elif args.algorithm == "FD":
             server = FD(args, i)
