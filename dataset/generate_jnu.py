@@ -16,6 +16,7 @@ train_ratio = 0.8
 dirichlet_alpha = 0.05
 size_jitter_ratio = 0.12
 condition_profile = "balanced"
+test_split_mode = "proportional"
 window_size = 2048
 window_stride = 512
 
@@ -407,20 +408,102 @@ def train_test_split_np(X, y, train_size, seed, stratify=None):
     return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
 
 
+def train_test_split_fixed_test_count(X, y, test_count, seed, stratify=None):
+    rng = np.random.default_rng(seed)
+    indices = np.arange(len(y))
+
+    if len(indices) <= 1:
+        raise ValueError("Each client must contain at least 2 samples to perform train/test split.")
+
+    test_count = int(test_count)
+    test_count = min(max(test_count, 1), len(indices) - 1)
+
+    if stratify is None:
+        shuffled = indices.copy()
+        rng.shuffle(shuffled)
+        test_idx = shuffled[:test_count]
+        train_idx = shuffled[test_count:]
+        return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
+
+    unique_labels, label_counts = np.unique(stratify, return_counts=True)
+    if np.any(label_counts < 2):
+        return train_test_split_fixed_test_count(X, y, test_count, seed, stratify=None)
+
+    raw_test_counts = label_counts / label_counts.sum() * test_count
+    per_label_test = np.floor(raw_test_counts).astype(np.int64)
+    per_label_test = np.minimum(per_label_test, label_counts - 1)
+
+    deficit = test_count - int(per_label_test.sum())
+    if deficit > 0:
+        remainders = raw_test_counts - per_label_test
+        order = np.argsort(remainders)[::-1]
+        for idx in order:
+            if deficit == 0:
+                break
+            if per_label_test[idx] < label_counts[idx] - 1:
+                per_label_test[idx] += 1
+                deficit -= 1
+
+    while int(per_label_test.sum()) > test_count:
+        reducible = np.where(per_label_test > 0)[0]
+        if len(reducible) == 0:
+            break
+        idx = reducible[np.argmax(per_label_test[reducible])]
+        per_label_test[idx] -= 1
+
+    if int(per_label_test.sum()) != test_count:
+        return train_test_split_fixed_test_count(X, y, test_count, seed, stratify=None)
+
+    train_idx_parts = []
+    test_idx_parts = []
+    for label, label_test_count in zip(unique_labels, per_label_test):
+        label_indices = indices[stratify == label].copy()
+        rng.shuffle(label_indices)
+        label_test_count = int(label_test_count)
+        test_idx_parts.append(label_indices[:label_test_count])
+        train_idx_parts.append(label_indices[label_test_count:])
+
+    train_idx = np.concatenate(train_idx_parts)
+    test_idx = np.concatenate(test_idx_parts)
+    rng.shuffle(train_idx)
+    rng.shuffle(test_idx)
+    return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
+
+
 def split_data_custom(X, y, seed):
     train_data, test_data = [], []
     train_counts, test_counts = [], []
+    client_sizes = [len(labels) for labels in y]
+
+    if test_split_mode == "balanced":
+        total_test_samples = int(round(sum(client_sizes) * (1 - train_ratio)))
+        target_test_count = max(1, total_test_samples // len(y))
+        print(f"Test split mode: balanced")
+        print(f"Target test samples per client: {target_test_count}")
+    else:
+        target_test_count = None
+        print(f"Test split mode: proportional")
 
     for client_id in range(len(y)):
         _, counts = np.unique(y[client_id], return_counts=True)
         stratify_labels = y[client_id] if np.min(counts) >= 2 else None
-        X_train, X_test, y_train, y_test = train_test_split_np(
-            X[client_id],
-            y[client_id],
-            train_ratio,
-            stratify=stratify_labels,
-            seed=seed + client_id,
-        )
+        if test_split_mode == "balanced":
+            fixed_test_count = min(target_test_count, len(y[client_id]) - 1)
+            X_train, X_test, y_train, y_test = train_test_split_fixed_test_count(
+                X[client_id],
+                y[client_id],
+                fixed_test_count,
+                stratify=stratify_labels,
+                seed=seed + client_id,
+            )
+        else:
+            X_train, X_test, y_train, y_test = train_test_split_np(
+                X[client_id],
+                y[client_id],
+                train_ratio,
+                stratify=stratify_labels,
+                seed=seed + client_id,
+            )
 
         train_data.append({"x": X_train, "y": y_train})
         test_data.append({"x": X_test, "y": y_test})
@@ -463,6 +546,7 @@ def save_file_custom(
         "size_jitter_ratio": size_jitter_ratio,
         "condition_per_client": "single",
         "condition_profile": condition_profile,
+        "test_split_mode": test_split_mode,
         "window_size": window_size,
         "window_stride": window_stride,
         "condition_names": condition_names,
@@ -500,6 +584,7 @@ def generate_dataset(dir_path, raw_dir_path, num_clients, niid, balance, partiti
     print(f"Condition profile: {condition_profile}")
     print(f"Window size / stride: {window_size} / {window_stride}")
     print(f"Size jitter ratio: {size_jitter_ratio}")
+    print(f"Test split mode: {test_split_mode}")
 
     client_indices, y, client_conditions = allocate_clients_by_condition(
         dataset_y, dataset_conditions, condition_names, num_clients, num_classes, niid, condition_profile
@@ -531,11 +616,12 @@ def generate_dataset(dir_path, raw_dir_path, num_clients, niid, balance, partiti
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         raise SystemExit(
-            "Usage: python generate_jnu.py <iid|noniid> [balance|-] [pat|dir|exdir|-] [seed] [condition_profile] [size_jitter_ratio]\n"
+            "Usage: python generate_jnu.py <iid|noniid> [balance|-] [pat|dir|exdir|-] [seed] [condition_profile] [size_jitter_ratio] [proportional|balanced]\n"
             "Examples:\n"
             "  python generate_jnu.py iid - - 42\n"
             "  python generate_jnu.py noniid - - 42 moderate 0.20\n"
             "  python generate_jnu.py noniid - - 42 severe 0.25\n"
+            "  python generate_jnu.py noniid - - 42 severe 0.50 balanced\n"
             "  python generate_jnu.py noniid balance dir 42 balanced 0.10"
         )
 
@@ -548,9 +634,13 @@ if __name__ == "__main__":
     seed = int(sys.argv[4]) if len(sys.argv) > 4 else 42
     condition_profile = sys.argv[5] if len(sys.argv) > 5 else "balanced"
     size_jitter_ratio = float(sys.argv[6]) if len(sys.argv) > 6 else 0.12
+    test_split_mode = sys.argv[7] if len(sys.argv) > 7 else "proportional"
 
     niid = mode == "noniid"
     balance = balance_arg == "balance"
     partition = partition_arg if partition_arg != "-" else None
+
+    if test_split_mode not in {"proportional", "balanced"}:
+        raise SystemExit("The seventh argument must be 'proportional' or 'balanced'.")
 
     generate_dataset(dir_path, raw_dir_path, num_clients, niid, balance, partition, seed)

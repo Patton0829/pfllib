@@ -4,13 +4,14 @@ set -euo pipefail
 
 # Suggested workflow:
 #   1. Generate the harder-case JNU split first
-#      python dataset/generate_jnu.py noniid - - 42 severe 0.50
+#      python dataset/generate_jnu.py noniid - - 42 severe 0.50 balanced
 #   2. Run this script from repo root on the server
 #      bash ./run_jnu_hardercase_compare.sh
 #
 # Harder-case training setup:
 #   - severe condition imbalance
 #   - size_jitter_ratio = 0.50
+#   - balanced test split across clients
 #   - join_ratio = 0.10
 #   - local_epochs = 5
 #   - compare FedAvg vs FedAvgSimNormNoSize
@@ -48,7 +49,7 @@ format_tag() {
 cd "$SYSTEM_DIR"
 
 echo "Running JNU harder-case comparison experiments ..."
-echo "Expected dataset split: noniid / severe / size_jitter_ratio=0.50"
+echo "Expected dataset split: noniid / severe / size_jitter_ratio=0.50 / test_split_mode=balanced"
 echo "Training setup: join_ratio=0.10, local_epochs=5, global_rounds=3000"
 
 echo "Running FedAvg baseline ..."
