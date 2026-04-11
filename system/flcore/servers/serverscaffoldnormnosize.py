@@ -67,11 +67,14 @@ class SCAFFOLDSimNormNoSize(SCAFFOLD):
         global_c = copy.deepcopy(self.global_c)
         for server_param in global_model.parameters():
             server_param.data = server_param.data.clone()
+
+        # Keep SCAFFOLD's control-variate update unchanged.
+        # Only the model update uses similarity-based reweighting.
         for cid, weight in zip(self.uploaded_ids, adapted_weights):
             dy, dc = self.clients[cid].delta_yc()
             for server_param, client_param in zip(global_model.parameters(), dy):
                 server_param.data += client_param.data.clone() * weight * self.server_learning_rate
             for server_param, client_param in zip(global_c, dc):
-                server_param.data += client_param.data.clone() * weight
+                server_param.data += client_param.data.clone() / self.num_clients
         self.global_model = global_model
         self.global_c = global_c
