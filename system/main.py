@@ -19,6 +19,7 @@ from flcore.servers.serveravgsimnorm import FedAvgSimNorm
 from flcore.servers.serveravgsimnormnosize import FedAvgSimNormNoSize
 from flcore.servers.serveravgsimaccunified import FedAvgSimAccUnified
 from flcore.servers.serveravgsimaccunifiednosize import FedAvgSimAccUnifiedNoSize
+from flcore.servers.serverdhcw import DHCWFL
 from flcore.servers.serverpFedMe import pFedMe
 from flcore.servers.serverperavg import PerAvg
 from flcore.servers.serverprox import FedProx
@@ -263,6 +264,12 @@ def run(args):
             args.model.fc = nn.Identity()
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedAvgSimAccUnifiedNoSize(args, i)
+
+        elif args.algorithm == "DHCWFL":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = DHCWFL(args, i)
 
         elif args.algorithm == "Local":
             server = Local(args, i)
@@ -560,6 +567,12 @@ if __name__ == "__main__":
                         help="Maximum warm-up factor for the accuracy term in FedAvgAcc")
     parser.add_argument('-sa', "--size_alpha", type=float, default=0.5,
                         help="Exponent for sample-size weighting in FedAvgSimAccSizeAlpha")
+    parser.add_argument("--dhcw_history_lambda", type=float, default=0.8,
+                        help="Historical consistency EMA factor for DHCWFL")
+    parser.add_argument("--dhcw_group_tau", type=float, default=3.0,
+                        help="Intra-domain softmax temperature for DHCWFL")
+    parser.add_argument("--dhcw_domain_eta", type=float, default=3.0,
+                        help="Inter-domain softmax temperature for DHCWFL")
     # FedBABU
     parser.add_argument('-fte', "--fine_tuning_epochs", type=int, default=10)
     # APPLE
