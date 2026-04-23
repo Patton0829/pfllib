@@ -25,7 +25,7 @@ COMMON_ARGS=(
   -did 0
   -lr 0.001
   -gr 5000
-  -ls 1
+  -ls 5
   -nc 20
   -jr 0.3
   -eg 1
@@ -37,7 +37,7 @@ cd "$SYSTEM_DIR"
 
 echo "Running JNU + CWRU mixed-domain DHCW-FL only ..."
 echo "Expected dataset split: noniid / severe / size_jitter_ratio=0.50 / test_split_mode=balanced"
-echo "Training setup: join_ratio=0.30, local_epochs=1, global_rounds=5000"
+echo "Training setup: join_ratio=0.30, local_epochs=5, global_rounds=5000"
 echo "DHCW-FL setup: lambda=0.8, tau=3.0, eta=3.0"
 
 "$PYTHON_BIN" "$MAIN_SCRIPT" "${COMMON_ARGS[@]}" \
