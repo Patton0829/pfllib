@@ -17,6 +17,7 @@ from flcore.servers.serveravgsimaccnosize import FedAvgSimAccNoSize
 from flcore.servers.serveravgsimaccsizealpha import FedAvgSimAccSizeAlpha
 from flcore.servers.serveravgsimnorm import FedAvgSimNorm
 from flcore.servers.serveravgsimnormnosize import FedAvgSimNormNoSize
+from flcore.servers.serveravgsimnormhistnosize import FedAvgSimNormHistNoSize
 from flcore.servers.serveravgsimaccunified import FedAvgSimAccUnified
 from flcore.servers.serveravgsimaccunifiednosize import FedAvgSimAccUnifiedNoSize
 from flcore.servers.serverdhcw import DHCWFL
@@ -228,6 +229,12 @@ def run(args):
             args.model.fc = nn.Identity()
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedAvgSimNormNoSize(args, i)
+
+        elif args.algorithm == "FedAvgSimNormHistNoSize":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedAvgSimNormHistNoSize(args, i)
 
         elif args.algorithm == "FedAvgAcc":
             args.head = copy.deepcopy(args.model.fc)
@@ -559,6 +566,8 @@ if __name__ == "__main__":
     parser.add_argument('-tau', "--tau", type=float, default=1.0)
     parser.add_argument('-stau', "--sim_tau", type=float, default=2.0,
                         help="Temperature for similarity-aware aggregation in FedAvgSim")
+    parser.add_argument("--sim_history_lambda", type=float, default=0.8,
+                        help="Historical consistency EMA factor for FedAvgSimNormHistNoSize")
     parser.add_argument('-atau', "--acc_tau", type=float, default=2.0,
                         help="Temperature for accuracy-aware aggregation in FedAvgAcc")
     parser.add_argument('-aer', "--acc_ema_rho", type=float, default=0.9,
