@@ -97,7 +97,7 @@ def run(args):
                 args.model = Mclr_Logistic(1*28*28, num_classes=args.num_classes).to(args.device)
             elif "Cifar10" in args.dataset:
                 args.model = Mclr_Logistic(3*32*32, num_classes=args.num_classes).to(args.device)
-            elif args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix"}:
+            elif args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix", "pu"}:
                 args.model = Mclr_Logistic(2048, num_classes=args.num_classes).to(args.device)
             else:
                 args.model = Mclr_Logistic(60, num_classes=args.num_classes).to(args.device)
@@ -120,16 +120,16 @@ def run(args):
                 args.model = DNN(1*28*28, 100, num_classes=args.num_classes).to(args.device)
             elif "Cifar10" in args.dataset:
                 args.model = DNN(3*32*32, 100, num_classes=args.num_classes).to(args.device)
-            elif args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix"}:
+            elif args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix", "pu"}:
                 args.model = DNN(2048, 256, num_classes=args.num_classes).to(args.device)
             else:
                 args.model = DNN(60, 20, num_classes=args.num_classes).to(args.device)
 
         elif model_str == "CNN1D": # non-convex
-            if args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix"}:
+            if args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix", "pu"}:
                 args.model = SignalCNN1D(in_channels=1, seq_len=2048, num_classes=args.num_classes).to(args.device)
             else:
-                raise NotImplementedError("CNN1D is currently configured for cwru/jnu/jnu_cwru_mix signal datasets only.")
+                raise NotImplementedError("CNN1D is currently configured for cwru/jnu/jnu_cwru_mix/pu signal datasets only.")
         
         elif model_str == "ResNet18":
             args.model = torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes).to(args.device)
