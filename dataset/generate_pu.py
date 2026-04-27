@@ -18,6 +18,7 @@ dirichlet_alpha = 0.05
 size_jitter_ratio = 0.12
 condition_profile = "balanced"
 test_split_mode = "proportional"
+split_strategy = "by_source_file"
 window_size = 2048
 window_stride = 512
 
@@ -116,31 +117,30 @@ def load_all_conditions(raw_dir_path):
         signals[(fault_dir, file_name)] = signal
         min_length = len(signal) if min_length is None else min(min_length, len(signal))
 
-    dataset_x = []
-    dataset_y = []
-    dataset_conditions = []
+    source_records = []
     condition_names = sorted({condition_name for _, _, _, condition_name, _ in file_infos})
     condition_to_id = {name: idx for idx, name in enumerate(condition_names)}
 
-    for fault_dir, file_name, label_id, condition_name, _ in file_infos:
+    for source_id, (fault_dir, file_name, label_id, condition_name, _) in enumerate(file_infos):
         signal = signals[(fault_dir, file_name)][:min_length]
-        segments = segment_signal(signal, window_size, window_stride)
-        segments = standardize_segments(segments)
-        dataset_x.append(segments)
-        dataset_y.append(np.full(len(segments), label_id, dtype=np.int64))
-        dataset_conditions.append(
-            np.full(len(segments), condition_to_id[condition_name], dtype=np.int64)
+        source_records.append(
+            {
+                "source_id": int(source_id),
+                "fault_dir": fault_dir,
+                "file_name": file_name,
+                "label": int(label_id),
+                "condition_id": int(condition_to_id[condition_name]),
+                "condition_name": condition_name,
+                "signal": signal.astype(np.float32),
+            }
         )
 
         print(
             f"Loaded {file_name:<24} -> condition={condition_name}, "
-            f"label={label_names[label_id]}, windows={len(segments)}"
+            f"label={label_names[label_id]}, samples={len(signal)}"
         )
 
-    dataset_x = np.concatenate(dataset_x, axis=0)
-    dataset_y = np.concatenate(dataset_y, axis=0)
-    dataset_conditions = np.concatenate(dataset_conditions, axis=0)
-    return dataset_x, dataset_y, dataset_conditions, condition_names
+    return source_records, condition_names
 
 
 def plot_single_client_distribution(client_id, client_labels, output_prefix):
@@ -232,19 +232,31 @@ def get_clients_per_condition(num_clients, num_conditions, profile):
     raise ValueError(f"Unsupported condition profile: {profile}")
 
 
-def summarize_clients(client_indices, client_labels, client_conditions, condition_names):
+def count_windows(signal_length):
+    if signal_length < window_size:
+        return 0
+    return 1 + (signal_length - window_size) // window_stride
+
+
+def summarize_clients(client_records, condition_names):
     statistic = []
     sizes = []
-    for client_id in range(len(client_indices)):
+    for client_id, records in enumerate(client_records):
+        client_labels = np.array([record["label"] for record in records], dtype=np.int64)
+        client_conditions = np.array([record["condition_id"] for record in records], dtype=np.int64)
+        estimated_windows = sum(count_windows(len(record["signal"])) for record in records)
         client_stat = []
-        for label in np.unique(client_labels[client_id]):
-            client_stat.append((int(label), int(np.sum(client_labels[client_id] == label))))
+        for label in np.unique(client_labels):
+            label_window_count = sum(
+                count_windows(len(record["signal"])) for record in records if record["label"] == label
+            )
+            client_stat.append((int(label), int(label_window_count)))
         statistic.append(client_stat)
-        sizes.append(len(client_indices[client_id]))
-        condition_id = int(np.unique(client_conditions[client_id])[0])
-        readable_labels = [label_names[int(label)] for label in np.unique(client_labels[client_id])]
+        sizes.append(estimated_windows)
+        condition_id = int(np.unique(client_conditions)[0])
+        readable_labels = [label_names[int(label)] for label in np.unique(client_labels)]
         print(
-            f"Client {client_id}\t Size of data: {len(client_indices[client_id])}\t "
+            f"Client {client_id}\t Size of data: {estimated_windows}\t "
             f"Condition: {condition_names[condition_id]}\t Labels: {readable_labels}"
         )
         print(f"\t\t Samples of labels: {client_stat}")
@@ -279,6 +291,10 @@ def build_jittered_quotas(total_size, num_parts, jitter_ratio):
                 diff += 1
         ptr += 1
     return quotas
+
+
+def build_source_groups(source_records):
+    return [dict(record) for record in source_records]
 
 
 def allocate_condition_random(condition_indices, quotas):
@@ -362,32 +378,113 @@ def allocate_condition_label_skew(condition_indices, dataset_y, quotas, num_clas
     return [np.array(sorted(bucket), dtype=np.int64) for bucket in client_buckets]
 
 
-def allocate_clients_by_condition(dataset_y, dataset_conditions, condition_names, num_clients, num_classes, niid, profile):
+def allocate_condition_random_sources(condition_source_groups, quotas):
+    shuffled = condition_source_groups.copy()
+    np.random.shuffle(shuffled)
+    client_records = []
+    cursor = 0
+    for quota in quotas:
+        assigned_groups = shuffled[cursor:cursor + int(quota)]
+        cursor += int(quota)
+        client_records.append([dict(group) for group in assigned_groups])
+    return client_records
+
+
+def allocate_condition_label_skew_sources(condition_source_groups, quotas, num_classes, alpha):
+    per_class_groups = []
+    for class_id in range(num_classes):
+        groups = [group for group in condition_source_groups if group["label"] == class_id]
+        np.random.shuffle(groups)
+        per_class_groups.append(groups)
+
+    num_parts = len(quotas)
+    client_group_buckets = [[] for _ in range(num_parts)]
+    remaining = quotas.astype(np.int64).copy()
+
+    while np.any(remaining > 0):
+        active_clients = np.where(remaining > 0)[0].tolist()
+        proportions = np.random.dirichlet(np.repeat(alpha, num_classes), size=len(active_clients))
+        desired = np.zeros((len(active_clients), num_classes), dtype=np.int64)
+
+        for row_id, client_id in enumerate(active_clients):
+            quota = int(remaining[client_id])
+            raw = proportions[row_id] * quota
+            cnts = np.floor(raw).astype(np.int64)
+            deficit = quota - cnts.sum()
+            if deficit > 0:
+                order = np.argsort(raw - cnts)[::-1]
+                cnts[order[:deficit]] += 1
+            desired[row_id] = cnts
+
+        progress = False
+        for row_id, client_id in enumerate(active_clients):
+            taken = 0
+            class_order = np.argsort(desired[row_id])[::-1]
+            for class_id in class_order:
+                want = int(desired[row_id, class_id])
+                if want <= 0:
+                    continue
+                available = len(per_class_groups[class_id])
+                if available <= 0:
+                    continue
+                take = min(want, available, int(remaining[client_id]) - taken)
+                if take <= 0:
+                    continue
+                chosen = per_class_groups[class_id][:take]
+                del per_class_groups[class_id][:take]
+                client_group_buckets[client_id].extend(chosen)
+                taken += take
+                progress = True
+                if taken == int(remaining[client_id]):
+                    break
+            remaining[client_id] -= taken
+
+        if not progress:
+            break
+
+        if np.any(remaining > 0):
+            leftover_pool = []
+            for class_id in range(num_classes):
+                leftover_pool.extend(per_class_groups[class_id])
+                per_class_groups[class_id] = []
+            np.random.shuffle(leftover_pool)
+            cursor = 0
+            for client_id in np.where(remaining > 0)[0]:
+                need = int(remaining[client_id])
+                client_group_buckets[client_id].extend(leftover_pool[cursor:cursor + need])
+                cursor += need
+                remaining[client_id] = 0
+            break
+
+    client_records = []
+    for bucket in client_group_buckets:
+        client_records.append([dict(group) for group in bucket])
+    return client_records
+
+
+def allocate_clients_by_condition(source_records, condition_names, num_clients, num_classes, niid, profile):
     num_conditions = len(condition_names)
     clients_per_condition = get_clients_per_condition(num_clients, num_conditions, profile)
-    all_client_indices = []
-    all_client_labels = []
-    all_client_conditions = []
+    all_client_records = []
+    source_groups = build_source_groups(source_records)
 
     for condition_id in range(num_conditions):
-        condition_indices = np.where(dataset_conditions == condition_id)[0]
+        condition_source_groups = [group for group in source_groups if group["condition_id"] == condition_id]
         quotas = build_jittered_quotas(
-            len(condition_indices), clients_per_condition[condition_id], size_jitter_ratio
+            len(condition_source_groups), clients_per_condition[condition_id], size_jitter_ratio
         )
 
         if niid:
-            local_client_indices = allocate_condition_label_skew(
-                condition_indices, dataset_y, quotas, num_classes, dirichlet_alpha
+            local_client_indices = allocate_condition_label_skew_sources(
+                condition_source_groups, quotas, num_classes, dirichlet_alpha
             )
         else:
-            local_client_indices = allocate_condition_random(condition_indices, quotas)
+            local_client_indices = allocate_condition_random_sources(condition_source_groups, quotas)
 
-        for idxs in local_client_indices:
-            all_client_indices.append(idxs)
-            all_client_labels.append(dataset_y[idxs])
-            all_client_conditions.append(dataset_conditions[idxs])
+        for client_record_list in local_client_indices:
+            all_client_records.append(client_record_list)
 
-    return all_client_indices, all_client_labels, all_client_conditions
+    return all_client_records
 
 
 def train_test_split_np(X, y, train_size, seed, stratify=None):
@@ -482,45 +579,166 @@ def train_test_split_fixed_test_count(X, y, test_count, seed, stratify=None):
     return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
 
 
-def split_data_custom(X, y, seed):
+def segment_standardized_signal(signal):
+    segments = segment_signal(signal, window_size, window_stride)
+    return standardize_segments(segments)
+
+
+def split_raw_signal_by_time(signal, train_size, test_count=None):
+    total_windows = count_windows(len(signal))
+    if total_windows < 2:
+        raise ValueError("Signal is too short to create non-overlapping train/test window sets.")
+
+    if test_count is None:
+        test_ratio = 1.0 - train_size
+    else:
+        test_ratio = min(max(test_count / total_windows, 1.0 / total_windows), (total_windows - 1) / total_windows)
+
+    split_point = int(round(len(signal) * (1.0 - test_ratio)))
+    min_train_len = window_size
+    min_test_len = window_size
+    split_point = min(max(split_point, min_train_len), len(signal) - min_test_len)
+
+    train_signal = signal[:split_point]
+    test_signal = signal[split_point:]
+    return train_signal, test_signal
+
+
+def choose_test_source_indices(client_records, train_size, seed, target_test_count=None):
+    num_sources = len(client_records)
+    if num_sources <= 1:
+        return set()
+
+    rng = np.random.default_rng(seed)
+    source_window_counts = np.array([count_windows(len(record["signal"])) for record in client_records], dtype=np.int64)
+    avg_source_windows = max(1.0, float(np.mean(source_window_counts)))
+
+    if target_test_count is None:
+        desired_test_sources = int(round(num_sources * (1 - train_size)))
+    else:
+        desired_test_sources = int(round(target_test_count / avg_source_windows))
+    desired_test_sources = min(max(desired_test_sources, 1), num_sources - 1)
+
+    label_to_indices = {}
+    for idx, record in enumerate(client_records):
+        label_to_indices.setdefault(record["label"], []).append(idx)
+    for idxs in label_to_indices.values():
+        rng.shuffle(idxs)
+
+    labels = sorted(label_to_indices.keys())
+    counts = np.array([len(label_to_indices[label]) for label in labels], dtype=np.int64)
+    max_test_per_label = np.maximum(counts - 1, 0)
+    raw = counts / counts.sum() * desired_test_sources
+    per_label_test = np.floor(raw).astype(np.int64)
+    per_label_test = np.minimum(per_label_test, max_test_per_label)
+
+    deficit = desired_test_sources - int(per_label_test.sum())
+    if deficit > 0:
+        remainders = raw - per_label_test
+        order = np.argsort(remainders)[::-1]
+        for idx in order:
+            if deficit == 0:
+                break
+            if per_label_test[idx] < max_test_per_label[idx]:
+                per_label_test[idx] += 1
+                deficit -= 1
+
+    test_indices = []
+    for idx, label in enumerate(labels):
+        take = int(per_label_test[idx])
+        test_indices.extend(label_to_indices[label][:take])
+
+    if len(test_indices) == 0:
+        candidate_labels = [label for label in labels if len(label_to_indices[label]) > 1]
+        if candidate_labels:
+            test_indices.append(label_to_indices[candidate_labels[0]][0])
+        else:
+            test_indices.append(0)
+
+    test_indices = set(test_indices)
+    if len(test_indices) >= num_sources:
+        test_indices.remove(next(iter(test_indices)))
+    return test_indices
+
+
+def records_to_window_dataset(records):
+    if len(records) == 0:
+        return np.empty((0, window_size, 1), dtype=np.float32), np.empty((0,), dtype=np.int64)
+
+    xs = []
+    ys = []
+    for record in records:
+        segments = segment_standardized_signal(record["signal"])
+        xs.append(segments)
+        ys.append(np.full(len(segments), record["label"], dtype=np.int64))
+    return np.concatenate(xs, axis=0), np.concatenate(ys, axis=0)
+
+
+def split_data_custom(client_records, seed):
     train_data, test_data = [], []
     train_counts, test_counts = [], []
-    client_sizes = [len(labels) for labels in y]
+    client_sizes = [sum(count_windows(len(record["signal"])) for record in records) for records in client_records]
+    all_client_labels = []
 
     if test_split_mode == "balanced":
         total_test_samples = int(round(sum(client_sizes) * (1 - train_ratio)))
-        target_test_count = max(1, total_test_samples // len(y))
+        target_test_count = max(1, total_test_samples // len(client_records))
         print("Test split mode: balanced")
         print(f"Target test samples per client: {target_test_count}")
     else:
         target_test_count = None
         print("Test split mode: proportional")
 
-    for client_id in range(len(y)):
-        _, counts = np.unique(y[client_id], return_counts=True)
-        stratify_labels = y[client_id] if np.min(counts) >= 2 else None
-        if test_split_mode == "balanced":
-            fixed_test_count = min(target_test_count, len(y[client_id]) - 1)
-            X_train, X_test, y_train, y_test = train_test_split_fixed_test_count(
-                X[client_id],
-                y[client_id],
-                fixed_test_count,
-                stratify=stratify_labels,
-                seed=seed + client_id,
-            )
+    for client_id, records in enumerate(client_records):
+        if split_strategy == "window_random":
+            X_full, y_full = records_to_window_dataset(records)
+            _, counts = np.unique(y_full, return_counts=True)
+            stratify_labels = y_full if np.min(counts) >= 2 else None
+            if test_split_mode == "balanced":
+                fixed_test_count = min(target_test_count, len(y_full) - 1)
+                X_train, X_test, y_train, y_test = train_test_split_fixed_test_count(
+                    X_full,
+                    y_full,
+                    fixed_test_count,
+                    stratify=stratify_labels,
+                    seed=seed + client_id,
+                )
+            else:
+                X_train, X_test, y_train, y_test = train_test_split_np(
+                    X_full,
+                    y_full,
+                    train_ratio,
+                    stratify=stratify_labels,
+                    seed=seed + client_id,
+                )
         else:
-            X_train, X_test, y_train, y_test = train_test_split_np(
-                X[client_id],
-                y[client_id],
-                train_ratio,
-                stratify=stratify_labels,
-                seed=seed + client_id,
-            )
+            fixed_test_count = target_test_count
+            if len(records) == 1:
+                train_signal, test_signal = split_raw_signal_by_time(
+                    records[0]["signal"],
+                    train_ratio,
+                    test_count=fixed_test_count,
+                )
+                train_records = [dict(records[0], signal=train_signal)]
+                test_records = [dict(records[0], signal=test_signal)]
+            else:
+                test_source_indices = choose_test_source_indices(
+                    records,
+                    train_ratio,
+                    seed + client_id,
+                    target_test_count=fixed_test_count,
+                )
+                train_records = [dict(record) for idx, record in enumerate(records) if idx not in test_source_indices]
+                test_records = [dict(record) for idx, record in enumerate(records) if idx in test_source_indices]
+
+            X_train, y_train = records_to_window_dataset(train_records)
+            X_test, y_test = records_to_window_dataset(test_records)
 
         train_data.append({"x": X_train, "y": y_train})
         test_data.append({"x": X_test, "y": y_test})
         train_counts.append(len(y_train))
         test_counts.append(len(y_test))
+        all_client_labels.append(np.concatenate([y_train, y_test], axis=0))
 
     print("Total number of samples:", sum(train_counts) + sum(test_counts))
     print("The number of train samples:", train_counts)
@@ -528,7 +746,7 @@ def split_data_custom(X, y, seed):
     print(f"Train/Test ratio: {train_ratio:.1%}/{1-train_ratio:.1%}")
     print()
 
-    return train_data, test_data
+    return train_data, test_data, all_client_labels
 
 
 def save_file_custom(
@@ -559,6 +777,7 @@ def save_file_custom(
         "condition_per_client": "single",
         "condition_profile": condition_profile,
         "test_split_mode": test_split_mode,
+        "split_strategy": split_strategy,
         "window_size": window_size,
         "window_stride": window_stride,
         "signal_channel": "vibration_1",
@@ -587,10 +806,11 @@ def generate_dataset(dir_path, raw_dir_path, num_clients, niid, balance, partiti
     train_path, test_path = prepare_output_dirs(dir_path)
     config_path = dir_path + "config.json"
 
-    dataset_x, dataset_y, dataset_conditions, condition_names = load_all_conditions(raw_dir_path)
-    num_classes = len(set(dataset_y))
+    source_records, condition_names = load_all_conditions(raw_dir_path)
+    num_classes = len({record["label"] for record in source_records})
+    estimated_total_windows = sum(count_windows(len(record["signal"])) for record in source_records)
 
-    print(f"Number of samples: {len(dataset_y)}")
+    print(f"Estimated number of windows before train/test split: {estimated_total_windows}")
     print(f"Number of classes: {num_classes}")
     print(f"Random seed: {seed}")
     print("Client-condition mapping: one client belongs to exactly one condition")
@@ -598,14 +818,14 @@ def generate_dataset(dir_path, raw_dir_path, num_clients, niid, balance, partiti
     print(f"Window size / stride: {window_size} / {window_stride}")
     print(f"Size jitter ratio: {size_jitter_ratio}")
     print(f"Test split mode: {test_split_mode}")
+    print(f"Split strategy: {split_strategy}")
 
-    client_indices, y, client_conditions = allocate_clients_by_condition(
-        dataset_y, dataset_conditions, condition_names, num_clients, num_classes, niid, condition_profile
+    client_records = allocate_clients_by_condition(
+        source_records, condition_names, num_clients, num_classes, niid, condition_profile
     )
 
-    statistic = summarize_clients(client_indices, y, client_conditions, condition_names)
-    X = [dataset_x[idxs] for idxs in client_indices]
-    train_data, test_data = split_data_custom(X, y, seed)
+    statistic = summarize_clients(client_records, condition_names)
+    train_data, test_data, client_labels = split_data_custom(client_records, seed)
     save_file_custom(
         config_path,
         train_path,
@@ -621,7 +841,7 @@ def generate_dataset(dir_path, raw_dir_path, num_clients, niid, balance, partiti
         seed,
         condition_names,
     )
-    save_distribution_figure(dir_path, y, client_id=0)
+    save_distribution_figure(dir_path, client_labels, client_id=0)
     print(f"Saved figures to {os.path.join(dir_path, 'figures')}")
 
 
@@ -629,11 +849,11 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         raise SystemExit(
             "Usage: python generate_pu.py <iid|noniid> [balance|-] [pat|dir|exdir|-] [seed] "
-            "[condition_profile] [size_jitter_ratio] [proportional|balanced]\n"
+            "[condition_profile] [size_jitter_ratio] [proportional|balanced] [by_source_file|window_random]\n"
             "Examples:\n"
             "  python generate_pu.py iid - - 42\n"
             "  python generate_pu.py noniid - - 42 severe 0.25\n"
-            "  python generate_pu.py noniid - - 42 severe 0.50 balanced\n"
+            "  python generate_pu.py noniid - - 42 severe 0.50 balanced by_source_file\n"
         )
 
     mode = sys.argv[1]
@@ -646,6 +866,7 @@ if __name__ == "__main__":
     condition_profile = sys.argv[5] if len(sys.argv) > 5 else "balanced"
     size_jitter_ratio = float(sys.argv[6]) if len(sys.argv) > 6 else 0.12
     test_split_mode = sys.argv[7] if len(sys.argv) > 7 else "proportional"
+    split_strategy = sys.argv[8] if len(sys.argv) > 8 else "by_source_file"
 
     niid = mode == "noniid"
     balance = balance_arg == "balance"
@@ -653,5 +874,7 @@ if __name__ == "__main__":
 
     if test_split_mode not in {"proportional", "balanced"}:
         raise SystemExit("The seventh argument must be 'proportional' or 'balanced'.")
+    if split_strategy not in {"by_source_file", "window_random"}:
+        raise SystemExit("The eighth argument must be 'by_source_file' or 'window_random'.")
 
     generate_dataset(dir_path, raw_dir_path, num_clients, niid, balance, partition, seed)
