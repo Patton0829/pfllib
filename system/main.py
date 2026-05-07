@@ -56,6 +56,7 @@ from flcore.servers.servercp import FedCP
 from flcore.servers.servergpfl import GPFL
 from flcore.servers.serverntd import FedNTD
 from flcore.servers.servergh import FedGH
+from flcore.servers.serverghsize import FedGHSize
 from flcore.servers.serverdbe import FedDBE
 from flcore.servers.servercac import FedCAC
 from flcore.servers.serverda import PFL_DA
@@ -424,10 +425,10 @@ def run(args):
             server = FedNTD(args, i)
 
         elif args.algorithm == "FedGH":
-            args.head = copy.deepcopy(args.model.fc)
-            args.model.fc = nn.Identity()
-            args.model = BaseHeadSplit(args.model, args.head)
             server = FedGH(args, i)
+
+        elif args.algorithm == "FedGHSize":
+            server = FedGHSize(args, i)
 
         elif args.algorithm == "FedDBE":
             args.head = copy.deepcopy(args.model.fc)
@@ -564,6 +565,8 @@ if __name__ == "__main__":
     parser.add_argument('-pls', "--plocal_epochs", type=int, default=1)
     # MOON / FedCAC / FedLC
     parser.add_argument('-tau', "--tau", type=float, default=1.0)
+    parser.add_argument("--gh_conflict_threshold", type=float, default=0.0,
+                        help="Conflict threshold for FedGH; project gradients when cosine similarity is below this value")
     parser.add_argument('-stau', "--sim_tau", type=float, default=2.0,
                         help="Temperature for similarity-aware aggregation in FedAvgSim")
     parser.add_argument("--sim_history_lambda", type=float, default=0.8,

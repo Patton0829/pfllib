@@ -7,7 +7,7 @@ from flcore.clients.clientavg import clientAVG
 from flcore.servers.serverbase import Server
 
 
-class FedGH(Server):
+class FedGHSize(Server):
     def __init__(self, args, times):
         super().__init__(args, times)
 
@@ -19,7 +19,7 @@ class FedGH(Server):
 
         print(f"\nJoin ratio / total clients: {self.join_ratio} / {self.num_clients}")
         print(f"Gradient conflict threshold: cos < {self.gh_conflict_threshold}")
-        print("Aggregation: pairwise conflict projection + equal averaging")
+        print("Aggregation: pairwise conflict projection + sample-size weighted averaging")
         print("Finished creating server and clients.")
 
         self.Budget = []
@@ -60,13 +60,15 @@ class FedGH(Server):
         assert len(self.uploaded_models) > 0
 
         projected_deltas = self._compute_projected_deltas()
-        mean_delta = sum(projected_deltas) / len(projected_deltas)
+        weighted_delta = sum(
+            weight * delta for weight, delta in zip(self.uploaded_weights, projected_deltas)
+        )
 
         self.global_model = copy.deepcopy(self.global_model)
         cursor = 0
         for param in self.global_model.parameters():
             numel = param.data.numel()
-            delta_slice = mean_delta[cursor:cursor + numel].reshape(param.data.shape)
+            delta_slice = weighted_delta[cursor:cursor + numel].reshape(param.data.shape)
             param.data += delta_slice
             cursor += numel
 
