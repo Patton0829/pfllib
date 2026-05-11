@@ -57,6 +57,8 @@ from flcore.servers.servergpfl import GPFL
 from flcore.servers.serverntd import FedNTD
 from flcore.servers.servergh import FedGH
 from flcore.servers.serverghsize import FedGHSize
+from flcore.servers.serversimgh import FedSimGH
+from flcore.servers.serversimghhistnosize import FedSimGHHistNoSize
 from flcore.servers.serverdbe import FedDBE
 from flcore.servers.servercac import FedCAC
 from flcore.servers.serverda import PFL_DA
@@ -429,6 +431,12 @@ def run(args):
 
         elif args.algorithm == "FedGHSize":
             server = FedGHSize(args, i)
+
+        elif args.algorithm == "FedSimGH":
+            server = FedSimGH(args, i)
+
+        elif args.algorithm == "FedSimGHHistNoSize":
+            server = FedSimGHHistNoSize(args, i)
 
         elif args.algorithm == "FedDBE":
             args.head = copy.deepcopy(args.model.fc)
