@@ -5,6 +5,8 @@ import numpy as np
 import time
 from flcore.clients.clientbase import Client
 from collections import defaultdict
+from sklearn.preprocessing import label_binarize
+from sklearn import metrics
 
 
 class clientProto(Client):
@@ -98,7 +100,7 @@ class clientProto(Client):
 
         self.protos = agg_func(protos)
 
-    def test_metrics(self):
+    def test_metrics(self, return_detail=False):
         testloaderfull = self.load_test_data()
         # self.model = self.load_model('model')
         # self.model.to(self.device)
@@ -106,6 +108,9 @@ class clientProto(Client):
 
         test_acc = 0
         test_num = 0
+        y_prob = []
+        y_true = []
+        y_pred = []
         
         if self.global_protos is not None:
             with torch.no_grad():
@@ -123,12 +128,37 @@ class clientProto(Client):
                             if type(pro) != type([]):
                                 output[i, j] = self.loss_mse(r, pro)
 
-                    test_acc += (torch.sum(torch.argmin(output, dim=1) == y)).item()
+                    pred = torch.argmin(output, dim=1)
+                    test_acc += (torch.sum(pred == y)).item()
                     test_num += y.shape[0]
+                    y_pred.append(pred.detach().cpu().numpy())
+                    y_prob.append((-output).detach().cpu().numpy())
+                    nc = self.num_classes
+                    if self.num_classes == 2:
+                        nc += 1
+                    lb = label_binarize(y.detach().cpu().numpy(), classes=np.arange(nc))
+                    if self.num_classes == 2:
+                        lb = lb[:, :2]
+                    y_true.append(lb)
 
-            return test_acc, test_num, 0
+            y_prob = np.concatenate(y_prob, axis=0) if len(y_prob) > 0 else np.empty((0, self.num_classes))
+            y_true = np.concatenate(y_true, axis=0) if len(y_true) > 0 else np.empty((0, self.num_classes))
+            y_pred = np.concatenate(y_pred, axis=0) if len(y_pred) > 0 else np.empty((0,), dtype=np.int64)
+
+            try:
+                auc = metrics.roc_auc_score(y_true, y_prob, average='micro') if y_true.size > 0 else 0.0
+            except ValueError:
+                auc = 0.0
+
+            if return_detail:
+                y_true_cls = np.argmax(y_true, axis=1) if y_true.size > 0 else np.empty((0,), dtype=np.int64)
+                return test_acc, test_num, auc, y_true_cls, y_pred
+
+            return test_acc, test_num, auc
         else:
-            return 0, 1e-5, 0
+            if return_detail:
+                return 0, 1e-5, 0.0, np.empty((0,), dtype=np.int64), np.empty((0,), dtype=np.int64)
+            return 0, 1e-5, 0.0
 
     def train_metrics(self):
         trainloader = self.load_train_data()

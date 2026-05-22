@@ -35,3 +35,16 @@ dataset/pu/KI01/
 !dataset/pu/train/**
 !dataset/pu/test/
 !dataset/pu/test/**
+
+# HUST dataset: keep generated splits/config/script, ignore raw source files
+dataset/hust/Raw_data/
+dataset/hust/Description file（描述文件）/
+!dataset/hust/config.json
+!dataset/hust/generate_hust.py
+!dataset/hust/train/
+!dataset/hust/train/**
+!dataset/hust/test/
+!dataset/hust/test/**
+!dataset/hust/figures/
+!dataset/hust/figures/**
+dataset/hust/val/
