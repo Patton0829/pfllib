@@ -24,7 +24,7 @@ condition_profile = "balanced"
 test_split_mode = "balanced"
 split_strategy = "by_source_file"
 window_size = 2048
-window_stride = 256
+window_stride = 128
 source_chunk_length = 32768
 signal_channel = "Y"
 
