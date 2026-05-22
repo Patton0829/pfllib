@@ -1,0 +1,202 @@
+{
+  "num_clients": 20,
+  "num_classes": 4,
+  "non_iid": true,
+  "balance": false,
+  "partition": null,
+  "seed": 42,
+  "train_ratio": 0.7,
+  "dirichlet_alpha": 0.05,
+  "size_jitter_ratio": 0.25,
+  "condition_per_client": "single",
+  "condition_profile": "balanced",
+  "test_split_mode": "balanced",
+  "split_strategy": "by_source_file",
+  "window_size": 2048,
+  "window_stride": 1024,
+  "source_chunk_length": 32768,
+  "signal_channel": "Y",
+  "fault_severity": "0.5X for faulty classes; H has no severity prefix",
+  "condition_names": [
+    "65Hz",
+    "70Hz",
+    "75Hz",
+    "80Hz"
+  ],
+  "label_names": [
+    "healthy",
+    "inner_fault",
+    "outer_fault",
+    "ball_fault"
+  ],
+  "Size of samples for labels in clients": [
+    [
+      [
+        3,
+        186
+      ]
+    ],
+    [
+      [
+        1,
+        248
+      ]
+    ],
+    [
+      [
+        0,
+        155
+      ]
+    ],
+    [
+      [
+        0,
+        93
+      ],
+      [
+        2,
+        93
+      ],
+      [
+        3,
+        31
+      ]
+    ],
+    [
+      [
+        2,
+        155
+      ],
+      [
+        3,
+        31
+      ]
+    ],
+    [
+      [
+        2,
+        217
+      ]
+    ],
+    [
+      [
+        3,
+        186
+      ]
+    ],
+    [
+      [
+        0,
+        93
+      ],
+      [
+        1,
+        31
+      ],
+      [
+        2,
+        31
+      ],
+      [
+        3,
+        62
+      ]
+    ],
+    [
+      [
+        0,
+        155
+      ]
+    ],
+    [
+      [
+        1,
+        217
+      ]
+    ],
+    [
+      [
+        2,
+        155
+      ],
+      [
+        3,
+        31
+      ]
+    ],
+    [
+      [
+        0,
+        248
+      ]
+    ],
+    [
+      [
+        1,
+        124
+      ],
+      [
+        2,
+        62
+      ]
+    ],
+    [
+      [
+        1,
+        124
+      ]
+    ],
+    [
+      [
+        2,
+        31
+      ],
+      [
+        3,
+        217
+      ]
+    ],
+    [
+      [
+        1,
+        186
+      ]
+    ],
+    [
+      [
+        1,
+        62
+      ],
+      [
+        2,
+        93
+      ]
+    ],
+    [
+      [
+        3,
+        217
+      ]
+    ],
+    [
+      [
+        0,
+        62
+      ],
+      [
+        2,
+        155
+      ],
+      [
+        3,
+        31
+      ]
+    ],
+    [
+      [
+        0,
+        186
+      ]
+    ]
+  ]
+}
