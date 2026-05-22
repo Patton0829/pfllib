@@ -48,3 +48,14 @@ dataset/hust/Description file（描述文件）/
 !dataset/hust/figures/
 !dataset/hust/figures/**
 dataset/hust/val/
+
+# XJTU dataset: keep generator/config/figures, ignore raw source files and generated npz splits
+dataset/xjtu/XJTU-SY_Bearing_Datasets/
+dataset/xjtu/train/*
+dataset/xjtu/test/*
+!dataset/xjtu/config.json
+!dataset/xjtu/generate_xjtu.py
+!dataset/xjtu/train/.gitkeep
+!dataset/xjtu/test/.gitkeep
+!dataset/xjtu/figures/
+!dataset/xjtu/figures/**
