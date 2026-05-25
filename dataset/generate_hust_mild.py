@@ -19,12 +19,15 @@ dir_path = "dataset/hust_mild/"
 train_ratio = 0.7
 mild_alpha = 0.5
 condition_affinity = 0.35
+min_labels_per_client = 1
 window_size = base.window_size
 window_stride = base.window_stride
 source_chunk_length = base.source_chunk_length
 signal_channel = base.signal_channel
 target_conditions = base.target_conditions
 label_names = base.label_names
+dataset_variant = "hust_mild"
+dataset_display_name = "HUST-Mild"
 
 
 def prepare_output_dirs(base_dir):
@@ -97,9 +100,53 @@ def allocate_mild_train_clients(train_records, seed):
         donor_id = int(np.argmax([len(items) for items in buckets]))
         bucket.append(buckets[donor_id].pop())
 
+    enforce_min_labels_per_client(buckets, min_labels_per_client)
+
     for bucket in buckets:
         rng.shuffle(bucket)
     return buckets, primary_conditions, label_preferences
+
+
+def enforce_min_labels_per_client(buckets, min_labels):
+    if min_labels <= 1:
+        return
+
+    def labels(bucket):
+        return {record["label"] for record in bucket}
+
+    for client_id, bucket in enumerate(buckets):
+        attempts = 0
+        while len(labels(bucket)) < min_labels and attempts < 100:
+            attempts += 1
+            current_labels = labels(bucket)
+            donor_choice = None
+            moved_record_idx = None
+
+            donor_order = sorted(
+                range(len(buckets)),
+                key=lambda idx: (len(labels(buckets[idx])), len(buckets[idx])),
+                reverse=True,
+            )
+            for donor_id in donor_order:
+                if donor_id == client_id:
+                    continue
+                donor_bucket = buckets[donor_id]
+                donor_labels = labels(donor_bucket)
+                if len(donor_labels) <= min_labels:
+                    continue
+                for idx, record in enumerate(donor_bucket):
+                    if record["label"] not in current_labels:
+                        remaining_labels = labels(donor_bucket[:idx] + donor_bucket[idx + 1:])
+                        if len(remaining_labels) >= min_labels:
+                            donor_choice = donor_id
+                            moved_record_idx = idx
+                            break
+                if donor_choice is not None:
+                    break
+
+            if donor_choice is None:
+                break
+            bucket.append(buckets[donor_choice].pop(moved_record_idx))
 
 
 def allocate_balanced_test_data(test_records, seed):
@@ -166,7 +213,7 @@ def plot_single_client_distribution(client_id, labels, output_prefix):
     bars = ax.bar(x, full_counts, color=plt.cm.Set3(np.linspace(0, 1, len(full_counts))), edgecolor="black")
     ax.set_xlabel("Label Category")
     ax.set_ylabel("Number of Samples")
-    ax.set_title(f"HUST-Mild Label Distribution for Client {client_id}")
+    ax.set_title(f"{dataset_display_name} Label Distribution for Client {client_id}")
     ax.set_xticks(x)
     ax.set_xticklabels([label_names[i] for i in x])
     ax.grid(axis="y", linestyle="--", alpha=0.35)
@@ -235,10 +282,11 @@ def generate_dataset(seed):
         "num_classes": len(label_names),
         "non_iid": True,
         "seed": seed,
-        "dataset_variant": "hust_mild",
+        "dataset_variant": dataset_variant,
         "train_ratio": train_ratio,
         "dirichlet_alpha": mild_alpha,
         "condition_affinity": condition_affinity,
+        "min_labels_per_client": min_labels_per_client,
         "condition_per_client": "mixed_soft_primary",
         "test_split_mode": "label_balanced_round_robin",
         "split_strategy": "source_chunk_train_test_then_client_allocation",
@@ -258,12 +306,12 @@ def generate_dataset(seed):
 
     fig_dir = os.path.join(dir_path, "figures")
     os.makedirs(fig_dir, exist_ok=True)
-    plot_single_client_distribution(0, client_labels_for_plot[0], os.path.join(fig_dir, "hust_mild_client_0_label_distribution"))
+    plot_single_client_distribution(0, client_labels_for_plot[0], os.path.join(fig_dir, f"{dataset_variant}_client_0_label_distribution"))
 
     print("Total number of samples:", sum(train_counts) + sum(test_counts))
     print("The number of train samples:", train_counts)
     print("The number of test samples:", test_counts)
-    print("Finish generating HUST-Mild dataset.")
+    print(f"Finish generating {dataset_display_name} dataset.")
 
 
 if __name__ == "__main__":
