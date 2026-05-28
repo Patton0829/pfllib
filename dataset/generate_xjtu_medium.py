@@ -20,6 +20,8 @@ train_ratio = 0.7
 medium_alpha = 0.3
 condition_affinity = 0.25
 min_labels_per_client = 2
+dataset_variant = "xjtu_medium"
+dataset_display_name = "XJTU-Medium"
 window_size = base.window_size
 window_stride = base.window_stride
 label_names = base.label_names
@@ -201,7 +203,7 @@ def plot_single_client_distribution(client_id, labels, output_prefix):
     bars = ax.bar(x, full_counts, color=plt.cm.Set3(np.linspace(0, 1, len(full_counts))), edgecolor="black")
     ax.set_xlabel("Label Category")
     ax.set_ylabel("Number of Samples")
-    ax.set_title(f"XJTU-Medium Label Distribution for Client {client_id}")
+    ax.set_title(f"{dataset_display_name} Label Distribution for Client {client_id}")
     ax.set_xticks(x)
     ax.set_xticklabels([label_names[i] for i in x])
     ax.grid(axis="y", linestyle="--", alpha=0.35)
@@ -265,14 +267,14 @@ def generate_dataset(seed):
 
     fig_dir = os.path.join(dir_path, "figures")
     os.makedirs(fig_dir, exist_ok=True)
-    plot_single_client_distribution(0, client_labels_for_plot[0], os.path.join(fig_dir, "xjtu_medium_client_0_label_distribution"))
+    plot_single_client_distribution(0, client_labels_for_plot[0], os.path.join(fig_dir, f"{dataset_variant}_client_0_label_distribution"))
 
     config = {
         "num_clients": num_clients,
         "num_classes": len(label_names),
         "non_iid": True,
         "seed": seed,
-        "dataset_variant": "xjtu_medium",
+        "dataset_variant": dataset_variant,
         "split_strategy": "source_csv_label_balanced_then_medium_client_allocation",
         "train_ratio": train_ratio,
         "dirichlet_alpha": medium_alpha,
@@ -296,7 +298,7 @@ def generate_dataset(seed):
     print("Total number of samples:", sum(train_counts) + sum(test_counts))
     print("The number of train samples:", train_counts)
     print("The number of test samples:", test_counts)
-    print("Finish generating XJTU-Medium dataset.")
+    print(f"Finish generating {dataset_display_name} dataset.")
 
 
 if __name__ == "__main__":
