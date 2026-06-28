@@ -104,8 +104,10 @@ def run(args):
                 args.model = Mclr_Logistic(3*32*32, num_classes=args.num_classes).to(args.device)
             elif args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix", "pu", "hust", "hust_mild", "hust_medium", "hust_balanced_medium"}:
                 args.model = Mclr_Logistic(2048, num_classes=args.num_classes).to(args.device)
-            elif args.dataset.lower() in {"xjtu", "xjtu_balanced", "xjtu_medium", "xjtu_harder_medium", "xjtu_conflict_medium"}:
+            elif args.dataset.lower() in {"xjtu", "xjtu_balanced", "xjtu_medium", "xjtu_harder_medium", "xjtu_conflict_medium", "xjtu_bridge_medium", "xjtu_stable_conflict_medium"}:
                 args.model = Mclr_Logistic(2048 * 2, num_classes=args.num_classes).to(args.device)
+            elif args.dataset.lower() in {"seu_bearing_medium"}:
+                args.model = Mclr_Logistic(2048 * 3, num_classes=args.num_classes).to(args.device)
             else:
                 args.model = Mclr_Logistic(60, num_classes=args.num_classes).to(args.device)
 
@@ -129,18 +131,22 @@ def run(args):
                 args.model = DNN(3*32*32, 100, num_classes=args.num_classes).to(args.device)
             elif args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix", "pu", "hust", "hust_mild", "hust_medium", "hust_balanced_medium"}:
                 args.model = DNN(2048, 256, num_classes=args.num_classes).to(args.device)
-            elif args.dataset.lower() in {"xjtu", "xjtu_balanced", "xjtu_medium", "xjtu_harder_medium", "xjtu_conflict_medium"}:
+            elif args.dataset.lower() in {"xjtu", "xjtu_balanced", "xjtu_medium", "xjtu_harder_medium", "xjtu_conflict_medium", "xjtu_bridge_medium", "xjtu_stable_conflict_medium"}:
                 args.model = DNN(2048 * 2, 256, num_classes=args.num_classes).to(args.device)
+            elif args.dataset.lower() in {"seu_bearing_medium"}:
+                args.model = DNN(2048 * 3, 256, num_classes=args.num_classes).to(args.device)
             else:
                 args.model = DNN(60, 20, num_classes=args.num_classes).to(args.device)
 
         elif model_str == "CNN1D": # non-convex
             if args.dataset.lower() in {"cwru", "jnu", "jnu_cwru_mix", "pu", "hust", "hust_mild", "hust_medium", "hust_balanced_medium"}:
                 args.model = SignalCNN1D(in_channels=1, seq_len=2048, num_classes=args.num_classes).to(args.device)
-            elif args.dataset.lower() in {"xjtu", "xjtu_balanced", "xjtu_medium", "xjtu_harder_medium", "xjtu_conflict_medium"}:
+            elif args.dataset.lower() in {"xjtu", "xjtu_balanced", "xjtu_medium", "xjtu_harder_medium", "xjtu_conflict_medium", "xjtu_bridge_medium", "xjtu_stable_conflict_medium"}:
                 args.model = SignalCNN1D(in_channels=2, seq_len=2048, num_classes=args.num_classes).to(args.device)
+            elif args.dataset.lower() in {"seu_bearing_medium"}:
+                args.model = SignalCNN1D(in_channels=3, seq_len=2048, num_classes=args.num_classes).to(args.device)
             else:
-                raise NotImplementedError("CNN1D is currently configured for cwru/jnu/jnu_cwru_mix/pu/hust/hust_mild/hust_medium/hust_balanced_medium/xjtu/xjtu_balanced/xjtu_medium/xjtu_harder_medium/xjtu_conflict_medium signal datasets only.")
+                raise NotImplementedError("CNN1D is currently configured for cwru/jnu/jnu_cwru_mix/pu/hust/hust_mild/hust_medium/hust_balanced_medium/xjtu/xjtu_balanced/xjtu_medium/xjtu_harder_medium/xjtu_conflict_medium/xjtu_bridge_medium/xjtu_stable_conflict_medium/seu_bearing_medium signal datasets only.")
         
         elif model_str == "ResNet18":
             args.model = torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes).to(args.device)

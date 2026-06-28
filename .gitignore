@@ -24,6 +24,7 @@ dataset/**/figures/
 dataset/cwru/condition*/
 dataset/jnu/
 dataset/seub/
+dataset/seu/SEU-datasets/
 
 # PU dataset: keep generated splits/config, ignore raw source files
 dataset/pu/K001/
